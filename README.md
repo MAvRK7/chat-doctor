@@ -15,6 +15,7 @@ chat-doctor/
 │       └── cleaned_anon.jsonl
 │
 ├── src/
+│   ├──__init__.py
 │   ├── preprocessing/
 │   │   └── clean_dataset.py
 │   │   └── train_tokenizer.py   
@@ -22,6 +23,9 @@ chat-doctor/
 │   │   └── count_tokens.py
 │   │   └── train_tokenizer.py
 │   │   └── verify_tokenizer.py
+│   ├── dataset/
+│   │   └── dataset.py
+│   │   └── test_dataset.py
 │   ├── model/
 │   │   └── transformer.py
 │   ├── train.py
