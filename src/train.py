@@ -28,7 +28,8 @@ class TrainConfig:
 
     log_every = 50
     save_every = 1000
-    save_path = "checkpoints/model.pt"
+    # save_path = "checkpoints/model.pt"
+    save_path = "/kaggle/working/checkpoints/model.pt"
     resume = True
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -51,7 +52,8 @@ def train():
     cfg = TrainConfig()
 
     # Ensure checkpoint directory exists
-    os.makedirs(os.path.dirname(cfg.save_path), exist_ok=True)
+    # os.makedirs(os.path.dirname(cfg.save_path), exist_ok=True)
+    os.makedirs("/kaggle/working/checkpoints", exist_ok=True)
 
     # Load tokenizer
     tok = Tokenizer.from_file(cfg.tokenizer_path)
@@ -92,12 +94,22 @@ def train():
 
     # resume from checkpoint
     start_step = 0
-    if cfg.resume and os.path.exists(cfg.save_path):
-        print(f"Resuming from {cfg.save_path}")
-        checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
-        model.load_state_dict(checkpoint["model"])
-        opt.load_state_dict(checkpoint["optimizer"])
-        start_step = checkpoint["step"]
+
+    if cfg.resume:
+        if os.path.exists(cfg.save_path):
+            try:
+                print(f"Resuming from {cfg.save_path}")
+                checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
+                model.load_state_dict(checkpoint["model"])
+                opt.load_state_dict(checkpoint["optimizer"])
+                start_step = checkpoint["step"]
+                print(f"Successfully resumed from step {start_step}")
+            except Exception as e:
+                print(f"Failed to load checkpoint: {e}")
+                print("Starting from step 0 instead.")
+        else:
+            print("No checkpoint found. Starting from step 0.")
+
 
     # Loss
     ce_loss_fn = nn.CrossEntropyLoss(ignore_index=0)
