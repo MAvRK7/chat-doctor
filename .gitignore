@@ -205,7 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-data/
+# data/
+data/processed/cleaned_anon.jsonl
+data/raw/train.csv
 
 # 🖥 OS files
 .DS_Store
