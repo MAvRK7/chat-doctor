@@ -50,6 +50,9 @@ def cosine_lr(step, max_steps, base_lr, warmup_steps):
 def train():
     cfg = TrainConfig()
 
+    # Ensure checkpoint directory exists
+    os.makedirs(os.path.dirname(cfg.save_path), exist_ok=True)
+
     # Load tokenizer
     tok = Tokenizer.from_file(cfg.tokenizer_path)
     vocab_size = tok.get_vocab_size()
