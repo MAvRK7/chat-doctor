@@ -24,10 +24,10 @@ class TrainConfig:
     lr = 3e-4
     weight_decay = 0.1
     warmup_steps = 200
-    max_steps = 5000
+    max_steps = 30000
 
     log_every = 50
-    save_every = 500
+    save_every = 1000
     save_path = "checkpoints/model.pt"
     resume = True
 
