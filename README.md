@@ -19,6 +19,7 @@ chat-doctor/
 │   │   └── clean_dataset.py
 │   │   └── train_tokenizer.py   
 │   ├── tokenizer.py/
+│   │   └── count_tokens.py
 │   │   └── train_tokenizer.py
 │   │   └── verify_tokenizer.py
 │   ├── model/
