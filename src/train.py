@@ -1,5 +1,6 @@
 import math
 import torch
+import os
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
@@ -28,6 +29,7 @@ class TrainConfig:
     log_every = 50
     save_every = 500
     save_path = "checkpoints/model.pt"
+    resume = True
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -85,13 +87,22 @@ def train():
         weight_decay=cfg.weight_decay,
     )
 
+    # resume from checkpoint
+    start_step = 0
+    if cfg.resume and os.path.exists(cfg.save_path):
+        print(f"Resuming from {cfg.save_path}")
+        checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
+        model.load_state_dict(checkpoint["model"])
+        opt.load_state_dict(checkpoint["optimizer"])
+        start_step = checkpoint["step"]
+
     # Loss
     ce_loss_fn = nn.CrossEntropyLoss(ignore_index=0)
 
-    step = 0
+    step = start_step
     model.train()
 
-    for epoch in range(999999):  # infinite loop until max_steps
+    for epoch in range(999999):  # effectively infinite until max_steps
         for batch, labels in dl:
             batch = batch.to(cfg.device)
             labels = labels.to(cfg.device)
@@ -132,15 +143,30 @@ def train():
                     f"LR: {lr:.6f}"
                 )
 
-            # Save checkpoint
+            # Save checkpoint (including optimizer and step)
             if step % cfg.save_every == 0 and step > 0:
-                torch.save(model.state_dict(), cfg.save_path)
+                torch.save(
+                    {
+                        "model": model.state_dict(),
+                        "optimizer": opt.state_dict(),
+                        "step": step,
+                    },
+                    cfg.save_path,
+                )
                 print(f"Saved checkpoint to {cfg.save_path}")
 
             step += 1
             if step >= cfg.max_steps:
                 print("Training complete.")
-                torch.save(model.state_dict(), cfg.save_path)
+                torch.save(
+                    {
+                        "model": model.state_dict(),
+                        "optimizer": opt.state_dict(),
+                        "step": step,
+                    },
+                    cfg.save_path,
+                )
+                print(f"Saved checkpoint to {cfg.save_path}")
                 return
 
 
