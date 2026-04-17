@@ -1,6 +1,10 @@
 # chat-doctor
 A fully local language model built from scratch for medical purposes 
 
+🧾 Quick facts:
+
+20M parameter MoE model with SwiGLU, 27 million‑token dataset.
+
 ---
 
 📂 File Structure 
@@ -69,17 +73,31 @@ This project uses the Medical Conversation Corpus (100k) from Kaggle.
 
 Download train.csv manually from:
 
-[Kaggle dataset](https://www.kaggle.com/datasets/thedevastator/medical-conversation-corpus-100k?select=train.csv)
+[Raw dataset](https://www.kaggle.com/datasets/thedevastator/medical-conversation-corpus-100k?select=train.csv)
+
+or Directly download the pre-processed dataset - cleaned_anon.jsonl
+
+[Processed dataset](https://www.kaggle.com/datasets/satvikraghav/cleaned-anon-jsonl/data)
 
 2. Place the file
 
 Move the downloaded file to:
 
+### Raw dataset
+
 ```
 data/raw/train.csv
 ```
 
-3. Process the dataset
+OR 
+
+### Place the processed dataset in 
+
+```
+data/processed/cleaned_anon.jsonl
+```
+
+3. Process the dataset (skip if you've downloaded the processed dataset)
 
 Run the preprocessing script:
 
