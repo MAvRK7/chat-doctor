@@ -20,6 +20,7 @@ class TrainConfig:
     dataset_path = "data/processed/cleaned_anon.jsonl"
     tokenizer_path = "tokenizer.json"
 
+    grad_accum_steps = 4
     batch_size = 8
     max_length = 256
     lr = 3e-4
@@ -98,6 +99,8 @@ def train():
 
     scaler = amp.GradScaler(device_type="cuda")
 
+    # Make sure gradients are zeroed before training starts
+    opt.zero_grad()  
 
     # resume from checkpoint
     start_step = 0
@@ -141,14 +144,16 @@ def train():
 
 
             # Backward
-            opt.zero_grad()
+            loss = loss / cfg.grad_accum_steps
             scaler.scale(loss).backward()
-            scaler.unscale_(opt)
 
-            # Gradient clipping
-            clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(opt)
-            scaler.update()
+            if (step + 1) % cfg.grad_accum_steps == 0:
+                scaler.unscale_(opt)
+                clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(opt)
+                scaler.update()
+                opt.zero_grad()
+
 
             # Update LR
             lr = cosine_lr(step, cfg.max_steps, cfg.lr, cfg.warmup_steps)
