@@ -16,11 +16,15 @@ from src.model.transformer import MoETransformer
 # -----------------------------
 # Training Config
 # -----------------------------
-class TrainConfig:
-    train_path = "data/processed/train.jsonl"
-    val_path = "data/processed/val.jsonl"
+repo_root = os.path.dirname(os.path.abspath(__file__))  # src/
+repo_root = os.path.dirname(repo_root)                  # chat-doctor/
 
-    tokenizer_path = "tokenizer.json"
+class TrainConfig:
+    train_path = os.path.join(repo_root, "data/processed/train.jsonl")
+    val_path = os.path.join(repo_root, "data/processed/val.jsonl")
+    tokenizer_path = os.path.join(repo_root, "tokenizer.json")
+    save_path = os.path.join(repo_root, "checkpoints/model.pt")
+
 
     grad_accum_steps = 4
     batch_size = 8
@@ -32,7 +36,6 @@ class TrainConfig:
 
     log_every = 50
     save_every = 1000
-    save_path = "checkpoints/model.pt"
     resume = True
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
