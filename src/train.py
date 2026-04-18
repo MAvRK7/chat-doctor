@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.nn.utils import clip_grad_norm_
+from torch import amp
 
 from tokenizers import Tokenizer
 
@@ -29,7 +30,10 @@ class TrainConfig:
     log_every = 50
     save_every = 1000
     # save_path = "checkpoints/model.pt"
-    save_path = "/kaggle/working/checkpoints/model.pt"
+    if "kaggle" in os.getcwd().lower():
+        save_path = "/kaggle/working/checkpoints/model.pt"
+    else:
+        save_path = "/content/checkpoints/model.pt"
     resume = True
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -52,8 +56,8 @@ def train():
     cfg = TrainConfig()
 
     # Ensure checkpoint directory exists
-    # os.makedirs(os.path.dirname(cfg.save_path), exist_ok=True)
-    os.makedirs("/kaggle/working/checkpoints", exist_ok=True)
+    ckpt_dir = os.path.dirname(cfg.save_path)
+    os.makedirs(ckpt_dir, exist_ok=True)
 
     # Load tokenizer
     tok = Tokenizer.from_file(cfg.tokenizer_path)
@@ -92,6 +96,9 @@ def train():
         weight_decay=cfg.weight_decay,
     )
 
+    scaler = amp.GradScaler(device_type="cuda")
+
+
     # resume from checkpoint
     start_step = 0
 
@@ -123,30 +130,31 @@ def train():
             labels = labels.to(cfg.device)
 
             # Forward
-            logits, moe_loss = model(batch)
+            with amp.autocast(device_type="cuda"):
+                logits, moe_loss = model(batch)
 
-            # Shift for next-token prediction
-            logits = logits[:, :-1].contiguous().view(-1, vocab_size)
-            labels = labels[:, 1:].contiguous().view(-1)
+                logits = logits[:, :-1].contiguous().view(-1, vocab_size)
+                labels = labels[:, 1:].contiguous().view(-1)
 
-            ce_loss = ce_loss_fn(logits, labels)
+                ce_loss = ce_loss_fn(logits, labels)
+                loss = ce_loss + 0.01 * moe_loss
 
-            # Total loss = CE + MoE aux loss
-            loss = ce_loss + 0.01 * moe_loss
 
             # Backward
             opt.zero_grad()
-            loss.backward()
+            scaler.scale(loss).backward()
+            scaler.unscale_(opt)
 
             # Gradient clipping
             clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(opt)
+            scaler.update()
 
             # Update LR
             lr = cosine_lr(step, cfg.max_steps, cfg.lr, cfg.warmup_steps)
             for g in opt.param_groups:
                 g["lr"] = lr
 
-            opt.step()
 
             # Logging
             if step % cfg.log_every == 0:
