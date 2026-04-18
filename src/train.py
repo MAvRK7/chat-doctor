@@ -16,14 +16,15 @@ from src.model.transformer import MoETransformer
 # -----------------------------
 # Training Config
 # -----------------------------
-repo_root = os.path.dirname(os.path.abspath(__file__))  # src/
-repo_root = os.path.dirname(repo_root)                  # chat-doctor/
 
 class TrainConfig:
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     train_path = os.path.join(repo_root, "data/processed/train.jsonl")
     val_path = os.path.join(repo_root, "data/processed/val.jsonl")
     tokenizer_path = os.path.join(repo_root, "tokenizer.json")
     save_path = os.path.join(repo_root, "checkpoints/model.pt")
+
 
 
     grad_accum_steps = 4
