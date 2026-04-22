@@ -1,7 +1,7 @@
 import random
 import os
 
-input_path = "data/processed/cleaned_anon.jsonl"   # actual dataset
+input_path = "data/processed/merged.jsonl" # Main dataset Path
 train_out = "data/processed/train.jsonl" # 95% for training
 val_out = "data/processed/val.jsonl" # 5% for validation
 

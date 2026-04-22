@@ -216,6 +216,10 @@ data/processed/
 # data/processed/cleaned_anon.jsonl
 # data/raw/train.csv
 
+src/tokenizer/tokenizer.json_corpus.txt
+
+model.pt
+
 # 🖥 OS files
 .DS_Store
 Thumbs.db

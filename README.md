@@ -3,7 +3,25 @@ A fully local language model built from scratch for medical purposes
 
 🧾 Quick facts:
 
-20M parameter MoE model with SwiGLU, 27 million‑token dataset.
+20M parameter MoE model with SwiGLU. Total samples: 221318. Total tokens: 51,757,583. Average tokens per sample: 233.86. Vocab size: 20,000
+
+
+Dataset 
+
+A custom dataset has been created for this model. It consists of:
+
+* MedDialogue: 542 (0.23%)
+* Medical Conversation Corpus (100k) (MCC): 106378 (45.66%)
+* HealthcareMagic: 108690 (46.65%)
+* MedQuAD: 16407 (7.04%)
+* Greetings, Identity and Refusal (GIR): 950 (0.41%)
+
+    Breakdown of Greetings/Identity/Refusal:
+    - Greeting samples: 500 (52.63%)
+    - Identity samples: 150 (15.79%)
+    - Refusal samples: 300 (31.58%)
+
+Total dataset size: 232967
 
 ---
 
@@ -17,37 +35,62 @@ chat-doctor/
 │   │   └── train.csv
 │   │   └── test.csv
 │   │   └── test.jsonl (for final test)
+│   │   └── english-train.json (train of MedDialogue)
+│   │   └── english-dev.json(val set of MedDialogue)
+│   │   └── data/raw/HealthCareMagic-100k.json
+│   │   └── data/raw/medquad.csv
+│   │
 │   └── processed/
-│       └── cleaned_anon.jsonl
-│       └── train.jsonl (95% of cleaned_anon.jsonl)
+│       └── merged.jsonl
+│       └── train.jsonl (95% of merged.jsonl)
 │       └── val.jsonl (5%)
+│       └── healthcaremagic.jsonl
+│       └── meddialog_dev.jsonl
+│       └── medquad.jsonl
+│       └── raw_clean.jsonl
 │
 ├── src/
 │   ├──__init__.py
-│   ├── preprocessing/
-│   │   └── clean_dataset.py
-│   │   └── train_tokenizer.py   
 │   ├── tokenizer.py/
 │   │   └── count_tokens.py
 │   │   └── train_tokenizer.py
 │   │   └── verify_tokenizer.py
+│   │   └── sample_token_corpus.py
+│   │   └── tokenizer.json.model
+│   │   └── tokenizer.json.vocab
+│   │   └── tokenizer.json_corpus.txt  # ignored
+│   │   └── sample_token_corpus.py
+│   │   └── tokenizer_sampled.json_corpus.txt
+│   │
 │   ├── dataset/
 │   │   └── dataset.py
 │   │   └── test_dataset.py
+│   │
 │   ├── model/
 │   │   └── moe.py
 │   │   └── transformer.py
+│   │
 │   ├── scripts/
 │   │   └── convert_csv_to_jsonl.py
+│   │   └── convert_healthcaremagic.py
+│   │   └── convert_medquad.py
+│   │   └── dataset_cleaner.py
+│   │   └── gen_multi_geetings.py
+│   │   └── merge_datasets.py
+│   │   └── analyze_dataset.py
 │   │   └── split_cleaned_jsonl.py
+│   │
+│   ├── sampling.py
+│   ├── inference.py
 │   ├── train.py
 │   ├── agent.py
 │   └── utils/
 │       ├── config.py
 │       └── logging.py
+│
 ├── config.yaml
 ├── requirements.txt
-├── tokenizer.json
+├── model.pt (the weights) # ignored
 └── README.md
 
 ```
@@ -74,76 +117,33 @@ pip install -r requirements.txt
 ```
 ### 4️⃣ 📦 Dataset Setup
 
-This project uses the Medical Conversation Corpus (100k) from Kaggle.
 
 1. Download the dataset
 
 Download train.csv manually from:
 
-[Raw train dataset](https://www.kaggle.com/datasets/thedevastator/medical-conversation-corpus-100k?select=train.csv)
+[train dataset](https://www.kaggle.com/datasets/satvikraghav/cleaned-anon-jsonl/data?select=train.jsonl)
 
-or Directly download the pre-processed dataset - cleaned_anon.jsonl
-
-[Processed train dataset](https://www.kaggle.com/datasets/satvikraghav/cleaned-anon-jsonl/data)
-
-Similarly download the test dataset from
-
-[Raw test dataset](https://www.kaggle.com/datasets/thedevastator/medical-conversation-corpus-100k?select=test.csv)
-
-or directly download the test dataset in jsonl format
-
-[Processed test dataset](https://www.kaggle.com/datasets/satvikraghav/cleaned-anon-jsonl/data/data/settings/settings/settings/settings/settings/settings/settings/settings/settings/settings/settings/settings?select=test.jsonl)
+[validation dataset](https://www.kaggle.com/datasets/satvikraghav/cleaned-anon-jsonl/data?select=val.jsonl)
 
 2. Place the file
 
-Move the downloaded Raw train file to:
+Move the downloaded train file to:
 
 ```
-data/raw/train.csv
+data/processed/train.jsonl
 ```
 
-OR place the processed dataset in 
+and place the val dataset in 
 
 ```
-data/processed/cleaned_anon.jsonl
+data/processed/val.jsonl
 ```
 
-Similarly place the raw test file in 
+The split in the train dataset (train.jsonl) into train (95%) and validation (val.jsonl) is a 95/5 split 
 
-```
-data/raw/test.csv
-```
-
-OR place the processed dataset in 
-
-```
-data/raw/test.jsonl
-```
-
-3. Process the dataset (skip if you've downloaded the processed dataset)
-
-Run the preprocessing script:
-
-For train.csv
-
-```
-python src/preprocessing/clean_dataset.py --input data/raw/train.csv --output data/processed/cleaned_anon.jsonl
-```
-
-For test.csv
-
-```
-python scripts/convert_csv_to_jsonl.py --input data/raw/train.csv --output data/raw/test.jsonl
-```
-
-4. Then run 
-```
-python scripts/split_cleaned_jsonl.py
-``` 
-This will split the train dataset (cleaned_anon.jsonl) into train (95%) and validation (5%) splits
-
- - Train size: 101,216 samples
- - Val size: 5,328 samples
+ - Train size: 221,318 samples
+ - Val size: 11,649 samples
 
 ⚠️ Note: The data/ directory is ignored in Git due to file size limits, so you must download the dataset locally before running the project.
 

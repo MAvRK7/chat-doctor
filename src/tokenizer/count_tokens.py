@@ -1,9 +1,11 @@
 import json
-from tokenizers import Tokenizer
+import sentencepiece as spm
 from tqdm import tqdm
 
 def count_tokens(tokenizer_path, dataset_path):
-    tok = Tokenizer.from_file(tokenizer_path)
+    # Load the SentencePiece model
+    sp = spm.SentencePieceProcessor()
+    sp.load(tokenizer_path)
 
     total_tokens = 0
     num_samples = 0
@@ -19,8 +21,9 @@ def count_tokens(tokenizer_path, dataset_path):
                 prefix = "User: " if m["role"] == "user" else "Assistant: "
                 text += prefix + m["content"].strip() + "\n"
 
-            enc = tok.encode(text)
-            total_tokens += len(enc.ids)
+            # Tokenize the text using the SentencePiece model
+            enc = sp.encode(text, out_type=int)
+            total_tokens += len(enc)
             num_samples += 1
 
     print(f"\nTotal samples: {num_samples}")
@@ -31,11 +34,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tokenizer", type=str, required=True)
-    parser.add_argument("--dataset", type=str, required=True)
+    parser.add_argument("--tokenizer", type=str, required=True, help="Path to the tokenizer model")
+    parser.add_argument("--dataset", type=str, required=True, help="Path to the dataset")
     args = parser.parse_args()
 
     count_tokens(args.tokenizer, args.dataset)
 
+
 # Run 
-# python src/tokenizer/count_tokens.py --tokenizer tokenizer.json --dataset data/processed/cleaned_anon.jsonl
+# python src/tokenizer/count_tokens.py --tokenizer src/tokenizer/tokenizer.json.model --dataset data/processed/train.jsonl

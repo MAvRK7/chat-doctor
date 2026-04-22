@@ -3,3 +3,5 @@ numpy
 pyyaml 
 tqdm
 tokenizers
+sentencepiece
+

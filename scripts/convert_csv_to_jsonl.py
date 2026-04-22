@@ -33,4 +33,5 @@ if __name__ == "__main__":
     convert(args.input, args.output)
 
 # Run
+# for test 
 # python scripts/convert_csv_to_jsonl.py --input data/raw/train.csv --output data/raw/test.jsonl
