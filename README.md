@@ -1,16 +1,27 @@
 # chat-doctor
+
 A fully local language model built from scratch for medical purposes 
 
 🧾 Quick facts:
 
-20M parameter MoE model with SwiGLU. Total samples: 221318. Total tokens: 51,757,583. Average tokens per sample: 233.86. Vocab size: 20,000
+- 120M parameters 
+- MoE architecture (4 experts, top‑2 routing) [Equivalent to a 250M–300M dense model]
+- 1024 context length
+- Trains in 3–4 hours A100 GPU
+- Fits in 4GB VRAM at inference
+- Perfect for medical Q&A
 
+Other details:
 
-Dataset 
+Has FlashAttention for speed, RMSNorm for stability, SwiGLU FFN, 20k BPE tokenizer
+
+Total samples: 221318. Total tokens: 51,757,583. Average tokens per sample: 233.86. Vocab size: 20,000
+
+📦 Dataset 
 
 A custom dataset has been created for this model. It consists of:
 
-* MedDialogue: 542 (0.23%)
+* MedDialogue: 542 conversations (0.23%)
 * Medical Conversation Corpus (100k) (MCC): 106378 (45.66%)
 * HealthcareMagic: 108690 (46.65%)
 * MedQuAD: 16407 (7.04%)
@@ -58,7 +69,7 @@ chat-doctor/
 │   │   └── sample_token_corpus.py
 │   │   └── tokenizer.json.model
 │   │   └── tokenizer.json.vocab
-│   │   └── tokenizer.json_corpus.txt  # ignored
+│   │   └── corpus.txt           # ignored
 │   │   └── sample_token_corpus.py
 │   │   └── tokenizer_sampled.json_corpus.txt
 │   │
@@ -89,6 +100,7 @@ chat-doctor/
 │       └── logging.py
 │
 ├── config.yaml
+├── tokenizer.json
 ├── requirements.txt
 ├── model.pt (the weights) # ignored
 └── README.md
@@ -115,7 +127,7 @@ source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
 ```
 pip install -r requirements.txt
 ```
-### 4️⃣ 📦 Dataset Setup
+### 4️⃣ Dataset Setup
 
 
 1. Download the dataset

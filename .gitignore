@@ -216,7 +216,7 @@ data/processed/
 # data/processed/cleaned_anon.jsonl
 # data/raw/train.csv
 
-src/tokenizer/tokenizer.json_corpus.txt
+src/tokenizer/corpus.txt
 
 model.pt
 

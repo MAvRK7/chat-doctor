@@ -94,6 +94,11 @@ def main():
     tokenizer_dir = "src/tokenizer"
     os.makedirs(tokenizer_dir, exist_ok=True)
 
+    # Write corpus
+    corpus_path = os.path.join(tokenizer_dir, "corpus.txt") 
+    print("💾 Writing corpus to disk...")
+    write_corpus(all_texts, corpus_path)
+
     # Initialize progress bar for the corpus size
     print("🧠 Training tokenizer with progress bar...")
     

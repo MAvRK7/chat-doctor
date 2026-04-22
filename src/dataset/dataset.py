@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import Dataset
 class ConversationDataset(Dataset):
     """
-    Loads your JSONL dataset and converts each conversation into a single
+    Loads JSONL dataset and converts each conversation into a single
     training string: "User: ... Assistant: ...".
     Tokenization happens inside __getitem__.
     """

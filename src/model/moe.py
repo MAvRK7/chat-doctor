@@ -13,8 +13,8 @@ class SwiGLUExpert(nn.Module):
     def forward(self, x):
         gate = torch.sigmoid(self.w2(x))
         x = self.w1(x) * gate
-        return self.w3(x)
-
+        return self.w3(x) * (1 / 1.41421356237)   # √2 scaling
+        
 
 class MoELayer(nn.Module):
     def __init__(self, dim, hidden_dim, num_experts=4, k=2):
@@ -28,9 +28,6 @@ class MoELayer(nn.Module):
         )
 
     def forward(self, x):
-        """
-        x: (batch, seq, dim)
-        """
         b, s, d = x.shape
 
         # Gating
@@ -38,36 +35,37 @@ class MoELayer(nn.Module):
         gate_scores = F.softmax(gate_logits, -1)   # (b, s, E)
 
         # Top‑k routing
-        topk_scores, topk_indices = torch.topk(
-            gate_scores, self.k, dim=-1
-        )  # (b, s, k)
+        topk_scores, topk_indices = torch.topk(gate_scores, self.k, dim=-1)  # (b, s, k)
 
-        # Load‑balancing loss (encourage uniform usage)
-        expert_usage = gate_scores.mean(dim=(0, 1))  # (E,)
-        load_balance_loss = (expert_usage * torch.log(expert_usage + 1e-9)).sum()
+        # Load‑balancing loss (entropy)
+        expert_usage = gate_scores.mean(dim=(0, 1))
+        load_balance_loss = -(expert_usage * torch.log(expert_usage + 1e-9)).sum()
 
-        # Output buffer
-        output = torch.zeros_like(x)
+        # Prepare output buffer
+        out = torch.zeros_like(x)
 
-        # Route tokens
-        for i in range(self.k):
-            expert_idx = topk_indices[..., i]      # (b, s)
-            expert_scores = topk_scores[..., i]    # (b, s)
+        # Process each expert
+        for e in range(self.num_experts):
+            # mask: (b, s, k)
+            mask = (topk_indices == e)
 
-            for e in range(self.num_experts):
-                mask = (expert_idx == e)           # (b, s)
+            if not mask.any():
+                continue
 
-                if mask.any():
-                    # 1. Tokens for this expert
-                    tokens = x[mask]               # (num_tokens, d)
+            # Flatten mask to gather tokens
+            flat_mask = mask.any(dim=-1)  # (b, s)
+            tokens = x[flat_mask]         # (num_tokens, d)
 
-                    # 2. Forward through expert
-                    expert_out = self.experts[e](tokens)  # (num_tokens, d)
+            # Expert forward
+            expert_out = self.experts[e](tokens)
 
-                    # 3. Gate weights for these tokens
-                    weights = expert_scores[mask].unsqueeze(-1)  # (num_tokens, 1)
+            # Gate weights for these tokens
+            weights = topk_scores[mask].unsqueeze(-1)  # (num_tokens, 1)
 
-                    # 4. Scatter back
-                    output[mask] += expert_out * weights
+            # Weighted expert output
+            expert_out = expert_out * weights
 
-        return output, load_balance_loss
+            # Scatter back
+            out[flat_mask] += expert_out
+
+        return out, load_balance_loss
