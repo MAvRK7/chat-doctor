@@ -2,7 +2,7 @@
 
 A fully local language model built from scratch for medical purposes 
 
-🧾 Quick facts:
+## 🧾 Quick facts:
 
 - 120M parameters 
 - MoE architecture (4 experts, top‑2 routing) [Equivalent to a 250M–300M dense model]
@@ -17,7 +17,7 @@ Has FlashAttention for speed, RMSNorm for stability, SwiGLU FFN, 20k BPE tokeniz
 
 Total samples: 221318. Total tokens: 51,757,583. Average tokens per sample: 233.86. Vocab size: 20,000
 
-📦 Dataset 
+## 📦 Dataset 
 
 A custom dataset has been created for this model. It consists of:
 
@@ -47,7 +47,7 @@ chat-doctor/
 │
 ├── data/                     # ignored
 │   ├── raw/
-│   │   ├── train.csv
+│   │   └── train.csv
 │   │   └── test.csv
 │   │   └── test.jsonl (for final test)
 │   │   └── english-train.json (train of MedDialogue)
@@ -56,7 +56,7 @@ chat-doctor/
 │   │   └── medquad.csv
 │   │
 │   ├── processed/
-│   │   ├── merged.jsonl
+│   │   └── merged.jsonl
 │   │   └── **train.jsonl** (95% of merged.jsonl)
 │   │   └── **val.jsonl** (5%)
 │   │   └── healthcaremagic.jsonl
@@ -68,12 +68,12 @@ chat-doctor/
 │   │   └── mental_health
 │   │
 │   └── test/
-│       ├── in_domain.jsonl (200 samples from test.csv)
+│       └── in_domain.jsonl (200 samples from test.csv)
 │       └── ood.jsonl
 │       └── safety.jsonl
 │
 ├── outputs/                 # initial random weights output
-│   ├── in_domain_model_outputs
+│   └── in_domain_model_outputs
 │   └── ood_model_outputs.jsonl
 │   └── safety_model_outputs.jsonl
 │
@@ -116,12 +116,12 @@ chat-doctor/
 │   ├── sampling.py
 │   ├── inference.py
 │   ├── train.py
-│   ├── agent.py
-│   └── utils/
+│   ├── agent.py (WIP)
+│   └── utils/ (WIP)
 │       ├── config.py
 │       └── logging.py
 │
-├── config.yaml
+├── config.yaml (WIP)
 ├── tokenizer.json
 ├── requirements.txt
 ├── model.pt (the weights) # ignored
