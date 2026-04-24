@@ -1,6 +1,6 @@
-# chat-doctor
+# ChatDoc
 
-A fully local language model built from scratch for medical purposes 
+A language model built exclusively for medical purposes 
 
 ## 🧾 Quick facts:
 
@@ -47,47 +47,47 @@ chat-doctor/
 │
 ├── data/                     # ignored
 │   ├── raw/
-│   │   └── train.csv
-│   │   └── test.csv
-│   │   └── test.jsonl (for final test)
-│   │   └── english-train.json (train of MedDialogue)
-│   │   └── english-dev.json (val set of MedDialogue)
-│   │   └── HealthCareMagic-100k.json
+│   │   ├── train.csv
+│   │   ├── test.csv
+│   │   ├── test.jsonl (for final test)
+│   │   ├── english-train.json (train of MedDialogue)
+│   │   ├── english-dev.json (val set of MedDialogue)
+│   │   ├── HealthCareMagic-100k.json
 │   │   └── medquad.csv
 │   │
 │   ├── processed/
-│   │   └── merged.jsonl
-│   │   └── **train.jsonl** (95% of merged.jsonl)
-│   │   └── **val.jsonl** (5%)
-│   │   └── healthcaremagic.jsonl
-│   │   └── meddialog_dev.jsonl
-│   │   └── medquad.jsonl
-│   │   └── raw_clean.jsonl
-│   │   └── combined_greetings_identity.jsonl
-│   │   └── adversarial.jsonl
+│   │   ├── merged.jsonl
+│   │   ├── **train.jsonl** (95% of merged.jsonl)
+│   │   ├── **val.jsonl** (5%)
+│   │   ├── healthcaremagic.jsonl
+│   │   ├── meddialog_dev.jsonl
+│   │   ├── medquad.jsonl
+│   │   ├── raw_clean.jsonl
+│   │   ├── combined_greetings_identity.jsonl
+│   │   ├── adversarial.jsonl
 │   │   └── mental_health
 │   │
 │   └── test/
-│       └── in_domain.jsonl (200 samples from test.csv)
-│       └── ood.jsonl
+│       ├── in_domain.jsonl (200 samples from test.csv)
+│       ├── ood.jsonl
 │       └── safety.jsonl
 │
 ├── outputs/                 # initial random weights output
-│   └── in_domain_model_outputs
-│   └── ood_model_outputs.jsonl
+│   ├── in_domain_model_outputs
+│   ├── ood_model_outputs.jsonl
 │   └── safety_model_outputs.jsonl
 │
 ├── src/
 │   ├──__init__.py
 │   ├── tokenizer.py/
 │   │   ├── count_tokens.py
-│   │   └── train_tokenizer.py
-│   │   └── verify_tokenizer.py
-│   │   └── sample_token_corpus.py
-│   │   └── tokenizer.json.model
-│   │   └── tokenizer.json.vocab
-│   │   └── corpus.txt           # ignored
-│   │   └── sample_token_corpus.py
+│   │   ├── train_tokenizer.py
+│   │   ├── verify_tokenizer.py
+│   │   ├── sample_token_corpus.py
+│   │   ├── tokenizer.json.model
+│   │   ├── tokenizer.json.vocab
+│   │   ├── corpus.txt           # ignored
+│   │   ├── sample_token_corpus.py
 │   │   └── tokenizer_sampled.json_corpus.txt
 │   │
 │   ├── dataset/
@@ -99,14 +99,14 @@ chat-doctor/
 │   │   └── transformer.py
 │   │
 │   ├── scripts/
-│   │   └── convert_csv_to_jsonl.py
-│   │   └── convert_healthcaremagic.py
-│   │   └── convert_medquad.py
-│   │   └── dataset_cleaner.py
-│   │   └── gen_multi_geetings.py
-│   │   └── merge_datasets.py
-│   │   └── analyze_dataset.py
-│   │   └── split_cleaned_jsonl.py
+│   │   ├── convert_csv_to_jsonl.py
+│   │   ├── convert_healthcaremagic.py
+│   │   ├── convert_medquad.py
+│   │   ├── dataset_cleaner.py
+│   │   ├── gen_multi_geetings.py
+│   │   ├── merge_datasets.py
+│   │   ├── analyze_dataset.py
+│   │   ├── split_cleaned_jsonl.py
 │   │   ├── edge_cases/
 │   │   │   ├── adversarial.py
 │   │   │   └── mental_health.py
