@@ -11,7 +11,7 @@ class SwiGLUExpert(nn.Module):
         self.w3 = nn.Linear(hidden_dim, dim)
 
     def forward(self, x):
-        gate = torch.sigmoid(self.w2(x))
+        gate = F.silu(self.w2(x)) # True SwiGLU
         x = self.w1(x) * gate
         return self.w3(x) * (1 / 1.41421356237)   # √2 scaling
         

@@ -21,18 +21,22 @@ Total samples: 221318. Total tokens: 51,757,583. Average tokens per sample: 233.
 
 A custom dataset has been created for this model. It consists of:
 
-* MedDialogue: 542 conversations (0.23%)
-* Medical Conversation Corpus (100k) (MCC): 106378 (45.66%)
-* HealthcareMagic: 108690 (46.65%)
-* MedQuAD: 16407 (7.04%)
-* Greetings, Identity and Refusal (GIR): 950 (0.41%)
+* MedDialogue: 542 conversations (0.20%)
+* Medical Conversation Corpus (100k) (MCC): 106378 (39.69%)
+* HealthcareMagic: 108690 (40.55%)
+* MedQuAD: 16407 (6.12%)
+* Adversarial Questions: 10k (3.73%)
+* Mental Health related queries: 10k (3.73%)
+* Greetings, Identity and Refusal (GIR): 16k (5.97%)
 
     Breakdown of Greetings/Identity/Refusal:
-    - Greeting samples: 500 (52.63%)
-    - Identity samples: 150 (15.79%)
-    - Refusal samples: 300 (31.58%)
+    - Greeting samples: 3000 (18.75%)
+    - Identity samples: 3000 (18.75%)
+    - Refusal samples: 10000 (62.50%)
 
-Total dataset size: 232967
+Total dataset size: 268,017
+    - Train size: 254,616 samples (95%)
+    - Val size: 13,401 samples (5%)
 
 ---
 
@@ -43,27 +47,40 @@ chat-doctor/
 │
 ├── data/                     # ignored
 │   ├── raw/
-│   │   └── train.csv
+│   │   ├── train.csv
 │   │   └── test.csv
 │   │   └── test.jsonl (for final test)
 │   │   └── english-train.json (train of MedDialogue)
-│   │   └── english-dev.json(val set of MedDialogue)
-│   │   └── data/raw/HealthCareMagic-100k.json
-│   │   └── data/raw/medquad.csv
+│   │   └── english-dev.json (val set of MedDialogue)
+│   │   └── HealthCareMagic-100k.json
+│   │   └── medquad.csv
 │   │
-│   └── processed/
-│       └── merged.jsonl
-│       └── train.jsonl (95% of merged.jsonl)
-│       └── val.jsonl (5%)
-│       └── healthcaremagic.jsonl
-│       └── meddialog_dev.jsonl
-│       └── medquad.jsonl
-│       └── raw_clean.jsonl
+│   ├── processed/
+│   │   ├── merged.jsonl
+│   │   └── **train.jsonl** (95% of merged.jsonl)
+│   │   └── **val.jsonl** (5%)
+│   │   └── healthcaremagic.jsonl
+│   │   └── meddialog_dev.jsonl
+│   │   └── medquad.jsonl
+│   │   └── raw_clean.jsonl
+│   │   └── combined_greetings_identity.jsonl
+│   │   └── adversarial.jsonl
+│   │   └── mental_health
+│   │
+│   └── test/
+│       ├── in_domain.jsonl (200 samples from test.csv)
+│       └── ood.jsonl
+│       └── safety.jsonl
+│
+├── outputs/                 # initial random weights output
+│   ├── in_domain_model_outputs
+│   └── ood_model_outputs.jsonl
+│   └── safety_model_outputs.jsonl
 │
 ├── src/
 │   ├──__init__.py
 │   ├── tokenizer.py/
-│   │   └── count_tokens.py
+│   │   ├── count_tokens.py
 │   │   └── train_tokenizer.py
 │   │   └── verify_tokenizer.py
 │   │   └── sample_token_corpus.py
@@ -74,11 +91,11 @@ chat-doctor/
 │   │   └── tokenizer_sampled.json_corpus.txt
 │   │
 │   ├── dataset/
-│   │   └── dataset.py
+│   │   ├── dataset.py
 │   │   └── test_dataset.py
 │   │
 │   ├── model/
-│   │   └── moe.py
+│   │   ├── moe.py
 │   │   └── transformer.py
 │   │
 │   ├── scripts/
@@ -90,6 +107,11 @@ chat-doctor/
 │   │   └── merge_datasets.py
 │   │   └── analyze_dataset.py
 │   │   └── split_cleaned_jsonl.py
+│   │   ├── edge_cases/
+│   │   │   ├── adversarial.py
+│   │   │   └── mental_health.py
+│   │   └── eval/
+│   │       └──  eval_sets.py
 │   │
 │   ├── sampling.py
 │   ├── inference.py
@@ -154,10 +176,8 @@ data/processed/val.jsonl
 
 The split in the train dataset (train.jsonl) into train (95%) and validation (val.jsonl) is a 95/5 split 
 
- - Train size: 221,318 samples
- - Val size: 11,649 samples
 
-⚠️ Note: The data/ directory is ignored in Git due to file size limits, so you must download the dataset locally before running the project.
+⚠️ Note: All the # ignored tagged files are ignored in Git due to file size limits, so you must download the dataset locally before running the project.
 
 
 ---

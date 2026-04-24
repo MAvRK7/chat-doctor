@@ -18,6 +18,12 @@ files = {
     "Greetings_Identity_Refusal": [
         "data/processed/combined_greetings_identity.jsonl",
     ],
+    "Adversarial": [
+        "data/processed/adversarial.jsonl",
+    ],
+    "Mental_health": [
+        "data/processed/mental_health.jsonl",
+    ],
 }
 
 def count_jsonl(file_path):
@@ -37,9 +43,9 @@ for category, paths in files.items():
     category_counts[category] = total
 
 # Manually define breakdown for greetings/identity/refusal
-greet_samples = 500
-identity_samples = 150
-refusal_samples = 300
+greet_samples = 3000
+identity_samples = 3000
+refusal_samples = 10000
 
 # Total dataset size
 total_dataset = sum(category_counts.values())

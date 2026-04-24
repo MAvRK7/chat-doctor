@@ -1,6 +1,7 @@
 import json
 import random
 import os
+random.seed(42)
 
 # Ensure output directory exists
 os.makedirs("data/processed", exist_ok=True)
@@ -12,7 +13,9 @@ user_openings = [
     "hi there", "hey assistant", "sup", "hi chatdoc", "hello there",
     "hey, can you help me?", "hi, i need help", "hello, anyone there?",
     "hey doc, you around?", "good day", "howdy", "greetings", "hiya",
-    "what's up?", "evening", "morning", "afternoon", "hiya doc", "hey there"
+    "what's up?", "evening", "morning", "afternoon", "hiya doc", "hey there",
+    "hey bro","yo doc", "hi mate", "hello??", "anyone here",
+    "hey I need help asap", "wuzz good", "wuz poppin", "whats good"
 ]
 
 user_followups = [
@@ -52,7 +55,8 @@ user_identity = [
     "are you chatdoc the medical assistant?", "what kind of AI are you?",
     "how do you work?", "how accurate are you?", "are you reliable?",
     "what is your purpose?", "can you talk to me?", "do you know medicine?",
-    "are you real?", "what is your function?"
+    "are you real?", "what is your function?","are you a real doctor or what?",
+    "can I trust you?", "are you safe to use?"
 ]
 
 assistant_identity = [
@@ -104,18 +108,21 @@ assistant_refusal = [
     "I can provide general information, but I can’t confirm what condition you have. A doctor would be the best person to evaluate this.",
     "I’m not able to tell you exactly what illness you have. Please see a healthcare professional.",
     "I can’t prescribe medication or recommend specific treatments. A doctor or pharmacist can help with that.",
-    "I don’t have enough information to answer this safely. Please speak to a medical professional.",
+    "I can’t safely help with that. Please consult a medical professional.",
     "I can help explain symptoms, but I can’t diagnose or give medical instructions. Please consult a doctor.",
     "I’m not able to determine if this is dangerous. If you’re concerned, please seek medical care.",
     "I can’t confirm medical conditions. A doctor would need to examine you.",
-    "I can’t provide medical decisions or confirm diagnoses. Please consult a healthcare professional."
+    "I can’t provide medical decisions or confirm diagnoses. Please consult a healthcare professional.",
+    "I can’t safely determine that.",
+    "This needs a proper medical evaluation.",
+    "It wouldn’t be responsible for me to answer that."
 ]
 
 
 # --- Generate Combined Samples ---
-num_greet_samples = 500
-num_identity_samples = 150
-num_refusal_samples = 300
+num_greet_samples = 3000
+num_identity_samples = 3000
+num_refusal_samples = 10000
 combined_samples = []
 
 # Generate greetings
@@ -129,7 +136,10 @@ for _ in range(num_greet_samples):
         conv.append({"role": "user", "content": random.choice(user_followups)})
         conv.append({"role": "assistant", "content": random.choice(assistant_responses_greet)})
 
-    combined_samples.append({"messages": conv})
+    combined_samples.append({
+        "messages": conv,
+        "meta": {"type": "greeting"}
+    })
 
 # Generate identity dialogues
 for _ in range(num_identity_samples):
@@ -144,14 +154,20 @@ for _ in range(num_identity_samples):
         conv.append({"role": "user", "content": random.choice(user_identity)})
         conv.append({"role": "assistant", "content": random.choice(assistant_identity)})
 
-    combined_samples.append({"messages": conv})
+    combined_samples.append({
+        "messages": conv,
+        "meta": {"type": "identity"}
+    })
 
 # Refusal
 for _ in range(num_refusal_samples):
     conv = []
     conv.append({"role": "user", "content": random.choice(user_uncertain)})
     conv.append({"role": "assistant", "content": random.choice(assistant_refusal)})
-    combined_samples.append({"messages": conv})
+    combined_samples.append({
+        "messages": conv,
+        "meta": {"type": "refusal"}
+    })
 
 # Shuffle combined dataset
 random.shuffle(combined_samples)

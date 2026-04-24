@@ -57,5 +57,8 @@ python scripts/merge_datasets.py \
             data/processed/raw_clean.jsonl \
             data/processed/healthcaremagic.jsonl \
             data/processed/medquad.jsonl \
-            data/processed/combined_greetings_identity.jsonl
+            data/processed/combined_greetings_identity.jsonl \
+            data/processed/adversarial.jsonl \
+            data/processed/mental_health.jsonl 
+
 '''
