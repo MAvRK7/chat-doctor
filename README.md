@@ -73,6 +73,8 @@ chat-doctor/
 │       └── safety.jsonl
 │
 ├── outputs/                 # initial random weights output
+│   ├── runs/ #ignored
+│   │   └──logs
 │   ├── in_domain_model_outputs
 │   ├── ood_model_outputs.jsonl
 │   └── safety_model_outputs.jsonl

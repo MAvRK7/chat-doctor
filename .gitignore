@@ -220,6 +220,10 @@ src/tokenizer/corpus.txt
 
 model.pt
 
+# logs
+outputs/runs
+*.tfevents*
+
 # 🖥 OS files
 .DS_Store
 Thumbs.db
