@@ -4,4 +4,5 @@ pyyaml
 tqdm
 tokenizers
 sentencepiece
+tensorboard
 

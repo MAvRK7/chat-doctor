@@ -9,6 +9,7 @@ from torch.nn.utils import clip_grad_norm_
 from torch import amp
 
 from tokenizers import Tokenizer
+from torch.utils.tensorboard import SummaryWriter
 
 from src.dataset.dataset import ConversationDataset, collate_batch
 from src.model.transformer import MoETransformer
@@ -18,12 +19,14 @@ from src.model.transformer import MoETransformer
 # Config
 # -----------------------------
 class TrainConfig:
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = os.getcwd()  # IMPORTANT for Kaggle
 
     train_path = os.path.join(repo_root, "data/processed/train.jsonl")
     val_path = os.path.join(repo_root, "data/processed/val.jsonl")
     tokenizer_path = os.path.join(repo_root, "tokenizer.json")
     save_path = os.path.join(repo_root, "checkpoints/model.pt")
+
+    log_dir = os.path.join(repo_root, "outputs", "runs")
 
     grad_accum_steps = 4
     batch_size = 8
@@ -34,7 +37,10 @@ class TrainConfig:
     max_steps = 30000
 
     log_every = 50
-    eval_every = 1000
+    eval_every = 500
+
+    min_delta = 1e-4
+    patience = 5
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -83,7 +89,7 @@ def evaluate(model, dl, device, vocab_size):
 
 
 # -----------------------------
-# Generation (sampling)
+# Generation
 # -----------------------------
 def generate_text(model, tok, prompt, device, max_new_tokens=80):
     model.eval()
@@ -94,7 +100,6 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
 
         for _ in range(max_new_tokens):
             logits, _ = model(input_ids)
-
             probs = F.softmax(logits[:, -1, :] / 0.8, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
 
@@ -111,7 +116,11 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
 # -----------------------------
 def train():
     cfg = TrainConfig()
+
     os.makedirs(os.path.dirname(cfg.save_path), exist_ok=True)
+    os.makedirs(cfg.log_dir, exist_ok=True)
+
+    writer = SummaryWriter(log_dir=cfg.log_dir)
 
     tok = Tokenizer.from_file(cfg.tokenizer_path)
     vocab_size = tok.get_vocab_size()
@@ -154,12 +163,11 @@ def train():
 
     best_val = float("inf")
     no_improve = 0
-    patience = 5
+    best_checkpoint = None
+
+    opt_step = 0
 
     model.train()
-
-    # Initialize opt_step counter
-    opt_step = 0
 
     while step < cfg.max_steps:
         for batch, labels in train_dl:
@@ -170,25 +178,26 @@ def train():
             attention_mask = attention_mask.to(cfg.device)
 
             with amp.autocast(device_type="cuda", enabled=(cfg.device == "cuda")):
-                logits, moe_loss = model(batch, attention_mask=attention_mask)
+                logits, aux = model(batch, attention_mask=attention_mask)
 
-                logits = logits[:, :-1].contiguous().view(-1, vocab_size)
-                labels = labels[:, 1:].contiguous().view(-1)
+                logits_flat = logits[:, :-1].contiguous().view(-1, vocab_size)
+                labels_flat = labels[:, 1:].contiguous().view(-1)
 
-                ce_loss = ce_loss_fn(logits, labels)
+                ce_loss = ce_loss_fn(logits_flat, labels_flat)
+
+                moe_loss = aux if torch.is_tensor(aux) else aux.get("moe_loss", 0.0)
+
                 total_loss = (ce_loss + 0.01 * moe_loss) / cfg.grad_accum_steps
 
-            # Accumulate gradients
             scaler.scale(total_loss).backward()
 
-            # Update optimizer every `grad_accum_steps`
             if (step + 1) % cfg.grad_accum_steps == 0:
                 opt_step += 1
+
                 lr = cosine_lr(opt_step, cfg.max_steps, cfg.lr, cfg.warmup_steps)
                 for g in opt.param_groups:
                     g["lr"] = lr
 
-                # Unscale gradients and update parameters
                 scaler.unscale_(opt)
                 clip_grad_norm_(model.parameters(), 1.0)
 
@@ -196,16 +205,31 @@ def train():
                 scaler.update()
                 opt.zero_grad()
 
+                writer.add_scalar("train/lr", lr, opt_step)
+
             if step % cfg.log_every == 0:
+                current_loss = (ce_loss + 0.01 * moe_loss).detach().item()
+
+                writer.add_scalar("train/loss", current_loss, step)
+                writer.add_scalar("train/ce_loss", ce_loss.item(), step)
+                writer.add_scalar("train/moe_loss", moe_loss.detach().item(), step)
+
                 print(
                     f"Step {step} | "
-                    f"Loss: {(ce_loss + 0.01 * moe_loss).item():.4f} | "
+                    f"Loss: {current_loss:.4f} | "
                     f"CE: {ce_loss.item():.4f} | "
-                    f"MoE: {moe_loss.item():.4f}"
+                    f"MoE: {float(moe_loss):.4f}"
                 )
 
+            # -----------------------------
+            # Evaluation
+            # -----------------------------
             if step % cfg.eval_every == 0 and step > 0:
                 val_loss, val_ppl = evaluate(model, val_dl, cfg.device, vocab_size)
+
+                writer.add_scalar("val/loss", val_loss, step)
+                writer.add_scalar("val/perplexity", val_ppl, step)
+
                 print(f"[VAL] {step} | loss={val_loss:.4f} | ppl={val_ppl:.2f}")
 
                 sample = generate_text(
@@ -214,25 +238,32 @@ def train():
                     "Patient: I have a headache.\nDoctor:",
                     cfg.device,
                 )
+
+                writer.add_text("samples/output", sample, step)
                 print("[GEN]", sample)
 
-                if val_loss < best_val:
+                # ---- EARLY STOPPING ----
+                if val_loss < best_val - cfg.min_delta:
                     best_val = val_loss
                     no_improve = 0
 
-                    torch.save(
-                        {
-                            "model": model.state_dict(),
-                            "optimizer": opt.state_dict(),
-                            "step": step,
-                        },
-                        cfg.save_path,
-                    )
+                    best_checkpoint = {
+                        "model": model.state_dict(),
+                        "optimizer": opt.state_dict(),
+                        "step": step,
+                    }
+
+                    torch.save(best_checkpoint, cfg.save_path)
                     print("[BEST SAVED]")
                 else:
                     no_improve += 1
-                    if no_improve >= patience:
-                        print("Early stopping.")
+                    print(f"No improve: {no_improve}/{cfg.patience}")
+
+                    if no_improve >= cfg.patience:
+                        print("Early stopping. Restoring best model...")
+                        if best_checkpoint is not None:
+                            model.load_state_dict(best_checkpoint["model"])
+                        writer.close()
                         return
 
             step += 1
@@ -247,6 +278,8 @@ def train():
         },
         cfg.save_path,
     )
+
+    writer.close()
     print("Training complete.")
 
 
