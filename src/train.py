@@ -37,7 +37,7 @@ class TrainConfig:
     max_steps = 30000
 
     log_every = 50
-    eval_every = 500
+    eval_every = 1000
 
     min_delta = 1e-4
     patience = 5
@@ -100,15 +100,22 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
 
         for _ in range(max_new_tokens):
             logits, _ = model(input_ids)
-            probs = F.softmax(logits[:, -1, :] / 0.8, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
+
+            # ---- TOP-K SAMPLING (much better stability) ----
+            logits = logits[:, -1, :] / 0.8
+            top_k = 50
+            v, ix = torch.topk(logits, top_k)
+            probs = F.softmax(v, dim=-1)
+            next_token = ix[torch.multinomial(probs, 1)]
 
             input_ids = torch.cat([input_ids, next_token], dim=1)
             input_ids = input_ids[:, -model.max_seq_len:]
 
     out = tok.decode(input_ids[0].tolist())
+    out = out.replace("Ġ", " ").replace("Ċ", "\n")
     model.train()
     return out
+
 
 
 # -----------------------------
