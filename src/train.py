@@ -118,7 +118,8 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
             input_ids = input_ids[:, -model.max_seq_len:]
 
     out = tok.decode(input_ids[0].tolist())
-    out = out.replace("Ġ", " ").replace("Ċ", "\n")
+    out = out.replace("Ġ", "").replace("Ċ", "\n")
+    out = " ".join(out.split())   # collapse multiple spaces
     model.train()
     return out
 

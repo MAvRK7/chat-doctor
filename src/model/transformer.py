@@ -146,7 +146,6 @@ class MoETransformer(nn.Module):
         super().__init__()
 
         self.token_emb = nn.Embedding(vocab_size, dim)
-        self.pos_emb = nn.Embedding(max_seq_len, dim)
         self.max_seq_len = max_seq_len
 
         self.blocks = nn.ModuleList()
@@ -168,10 +167,8 @@ class MoETransformer(nn.Module):
         self.lm_head.weight = self.token_emb.weight
 
     def forward(self, input_ids, attention_mask=None):
-        b, t = input_ids.shape
-        pos = torch.arange(t, device=input_ids.device).unsqueeze(0)
 
-        x = self.token_emb(input_ids) + self.pos_emb(pos)
+        x = self.token_emb(input_ids)
 
         total_moe_loss = 0.0
         for block in self.blocks:
