@@ -57,8 +57,8 @@ chat-doctor/
 │   │
 │   ├── processed/
 │   │   ├── merged.jsonl
-│   │   ├── **train.jsonl** (95% of merged.jsonl)
-│   │   ├── **val.jsonl** (5%)
+│   │   ├── train.jsonl (95% of merged.jsonl)
+│   │   ├── val.jsonl (5%)
 │   │   ├── healthcaremagic.jsonl
 │   │   ├── meddialog_dev.jsonl
 │   │   ├── medquad.jsonl
@@ -74,7 +74,7 @@ chat-doctor/
 │
 ├── outputs/                 # initial random weights output
 │   ├── runs/ #ignored
-│   │   └──logs
+│   │   └──logs (tfevents file) used for TensorBoard
 │   ├── in_domain_model_outputs
 │   ├── ood_model_outputs.jsonl
 │   └── safety_model_outputs.jsonl
@@ -184,10 +184,41 @@ The split in the train dataset (train.jsonl) into train (95%) and validation (va
 
 ---
 
+The Pretraining phase I model weights are available at 
+
+[model.pt](https://www.kaggle.com/datasets/satvikraghav/chat-doctor-checkpoints/data)
+
+Once trained, it should be placed in the project root.
+
+---
+
 Training details on TensorBoard
 
+Place the tfevents in 
+
 ```
-cd /Users/satvikraghav/coding/chat-doctor tensorboard --logdir runs
+outputs/runs
 ```
 
-This will open a link on which the trainig charts will be visible
+Run
+
+```
+cd /Users/satvikraghav/coding/chat-doctor
+tensorboard --logdir outputs/runs
+```
+
+This will generate a link
+```
+http://localhost:6006/
+```
+on which the trainig charts will be visible. Available charts are:
+
+Train:
+
+train/ce_loss, train/loss, train/lr, train/moe_loss
+
+Val:
+
+val/loss, val and val/perplexity
+
+The text generated during trining stages will also be visible in the Text section.

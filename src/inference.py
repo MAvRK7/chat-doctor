@@ -26,7 +26,7 @@ model.load_state_dict(state["model"])
 model.to(device)
 model.eval()
 
-def generate(prompt, max_new_tokens=150, temperature=0.8, top_k=50, top_p=0.9):
+def generate(prompt, max_new_tokens=150, temperature=0.7, top_k=40, top_p=0.9):
     eos_id = tokenizer.token_to_id("<eos>")
 
     enc = tokenizer.encode(prompt)
@@ -37,12 +37,14 @@ def generate(prompt, max_new_tokens=150, temperature=0.8, top_k=50, top_p=0.9):
             logits, _ = model(ids)
             logits = logits[:, -1, :]
 
+            # repetition penalty
             logits = apply_repetition_penalty(
                 logits,
                 ids[0].tolist(),
-                penalty=1.2
+                penalty=1.15
             )
 
+            # sampling
             next_id = sample(
                 logits,
                 temperature=temperature,
@@ -50,30 +52,32 @@ def generate(prompt, max_new_tokens=150, temperature=0.8, top_k=50, top_p=0.9):
                 top_p=top_p
             )
 
-        if next_id.item() == eos_id:
+        # stop if EOS
+        if eos_id is not None and next_id.item() == eos_id:
             break
 
         ids = torch.cat([ids, next_id], dim=1)
 
+    # decode
     text = tokenizer.decode(ids[0].tolist())
 
-    # Clean ByteLevel artifacts
+    # clean byte-level artifacts
     text = text.replace("Ġ", " ").replace("Ċ", "\n")
 
-    # Remove placeholder
-    text = text.replace("Person", "")
+    # collapse only *double* spaces, not all whitespace
+    text = re.sub(r" {2,}", " ", text)
 
-    # Collapse whitespace
-    text = re.sub(r"\s+", " ", text).strip()
+    # remove leftover placeholders
+    text = text.replace("Person", "").strip()
+
+    # stop at first "Assistant:" or repeated role
+    text = re.split(r"(Assistant:|Doctor: Patient:)", text)[0].strip()
 
     return text
 
 if __name__ == "__main__":
     prompt = (
-        "<bos>"
-        "You are a clear, concise medical assistant. "
-        "Avoid repetition. Avoid placeholders. "
-        "Patient: I have a headache.\n"
+        "Patient: I have a headache."
         "Doctor:"
     )
     print(generate(prompt))

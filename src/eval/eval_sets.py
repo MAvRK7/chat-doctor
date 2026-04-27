@@ -65,10 +65,14 @@ def load_model(cfg):
         max_seq_len=cfg.max_length,
     ).to(cfg.device)
 
+    # --- load trained weights ---
+    ckpt_path = os.path.join(cfg.repo_root, "model.pt")
+    state = torch.load(ckpt_path, map_location=cfg.device)
+    model.load_state_dict(state["model"])
     model.eval()
 
     print(f"Using device: {cfg.device}")
-    print(f"Model loaded on: {cfg.device}")
+    print(f"Model loaded from: {ckpt_path}")
 
     return model, tok
 
