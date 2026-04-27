@@ -101,13 +101,19 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
         for _ in range(max_new_tokens):
             logits, _ = model(input_ids)
 
-            # ---- TOP-K SAMPLING (much better stability) ----
+            # slice last token
             logits = logits[:, -1, :] / 0.8
-            top_k = 50
-            v, ix = torch.topk(logits, top_k)
-            probs = F.softmax(v, dim=-1)
-            next_token = ix[torch.multinomial(probs, 1)]
 
+            # top-k
+            top_k = 50
+            v, ix = torch.topk(logits, top_k)   # v: (1,k), ix: (1,k)
+            probs = F.softmax(v, dim=-1)
+
+            # sample correctly
+            sample_idx = torch.multinomial(probs, 1)   # (1,1)
+            next_token = ix.gather(1, sample_idx)      # (1,1)
+
+            # append
             input_ids = torch.cat([input_ids, next_token], dim=1)
             input_ids = input_ids[:, -model.max_seq_len:]
 
@@ -115,8 +121,6 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
     out = out.replace("Ġ", " ").replace("Ċ", "\n")
     model.train()
     return out
-
-
 
 # -----------------------------
 # Train

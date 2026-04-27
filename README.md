@@ -183,3 +183,11 @@ The split in the train dataset (train.jsonl) into train (95%) and validation (va
 
 
 ---
+
+Training details on TensorBoard
+
+```
+cd /Users/satvikraghav/coding/chat-doctor tensorboard --logdir runs
+```
+
+This will open a link on which the trainig charts will be visible

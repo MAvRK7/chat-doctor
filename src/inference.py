@@ -18,7 +18,7 @@ model = MoETransformer(
     ffn_hidden_dim=2048,
     num_experts=4,
     k=2,
-    max_seq_len=512,
+    max_seq_len=1024,
 )
 
 state = torch.load("model.pt", map_location=device)
