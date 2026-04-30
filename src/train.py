@@ -34,7 +34,7 @@ class TrainConfig:
     lr = 1e-4
     weight_decay = 0.1
     warmup_steps = 200
-    max_steps = 15000
+    max_steps = 50000
 
     log_every = 50
     eval_every = 1000
