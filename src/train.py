@@ -115,7 +115,8 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
             sample_idx = torch.multinomial(probs, 1)   # (1,1)
             next_token = ix.gather(1, sample_idx)      # (1,1)
 
-            if next_token.item() == tok.token_to_id("<user>"):
+            user_id = tok.token_to_id("<user>")
+            if next_token.item() == user_id:
                 continue
 
             # stop if EOS
@@ -128,6 +129,8 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
 
     out = tok.decode(input_ids[0].tolist())
     out = out.replace("Ġ", "").replace("Ċ", "\n")
+    out = out.replace("< user >", "<user>")
+    out = out.replace("< assistant >", "<assistant>")
     out = " ".join(out.split())   # collapse multiple spaces
     model.train()
     return out
@@ -214,7 +217,10 @@ def train():
 
         model.load_state_dict(state_dict, strict=False)
 
-        opt.load_state_dict(checkpoint["optimizer"])
+        try:
+            opt.load_state_dict(checkpoint["optimizer"])
+        except Exception as e:
+            print("⚠️ Optimizer state mismatch — resetting optimizer")
         step = checkpoint.get("step", 0)
 
         pt_step = step // cfg.grad_accum_steps
@@ -300,7 +306,7 @@ def train():
                 sample = generate_text(
                     model,
                     tok,
-                    "<user> I have a headache. <assistant>",
+                    "<user> I have a headache. What should I do? <assistant>",
                     cfg.device,
                 )
 
