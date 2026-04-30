@@ -180,46 +180,46 @@ def train():
 
     # Resume if checkpoint exists
     if os.path.exists(cfg.save_path):
-    checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
+        checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
 
-    state_dict = checkpoint["model"]
+        state_dict = checkpoint["model"]
 
-    old_vocab_size = state_dict["token_emb.weight"].shape[0]
-    new_vocab_size = model.token_emb.weight.shape[0]
+        old_vocab_size = state_dict["token_emb.weight"].shape[0]
+        new_vocab_size = model.token_emb.weight.shape[0]
 
-    if old_vocab_size != new_vocab_size:
-        print(f"Resizing embeddings: {old_vocab_size} → {new_vocab_size}")
+        if old_vocab_size != new_vocab_size:
+            print(f"Resizing embeddings: {old_vocab_size} → {new_vocab_size}")
 
-        # --- Resize token embeddings ---
-        old_emb = state_dict["token_emb.weight"]
-        new_emb = model.token_emb.weight.data
+            # --- Resize token embeddings ---
+            old_emb = state_dict["token_emb.weight"]
+            new_emb = model.token_emb.weight.data
 
-        new_emb[:old_vocab_size] = old_emb
+            new_emb[:old_vocab_size] = old_emb
 
-        if new_vocab_size > old_vocab_size:
-            nn.init.normal_(new_emb[old_vocab_size:], mean=0.0, std=0.02)
+            if new_vocab_size > old_vocab_size:
+                nn.init.normal_(new_emb[old_vocab_size:], mean=0.0, std=0.02)
 
-        state_dict["token_emb.weight"] = new_emb
+            state_dict["token_emb.weight"] = new_emb
 
-        # --- Resize LM head ---
-        old_head = state_dict["lm_head.weight"]
-        new_head = model.lm_head.weight.data
+            # --- Resize LM head ---
+            old_head = state_dict["lm_head.weight"]
+            new_head = model.lm_head.weight.data
 
-        new_head[:old_vocab_size] = old_head
+            new_head[:old_vocab_size] = old_head
 
-        if new_vocab_size > old_vocab_size:
-            nn.init.normal_(new_head[old_vocab_size:], mean=0.0, std=0.02)
+            if new_vocab_size > old_vocab_size:
+                nn.init.normal_(new_head[old_vocab_size:], mean=0.0, std=0.02)
 
-        state_dict["lm_head.weight"] = new_head
+            state_dict["lm_head.weight"] = new_head
 
-    model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict, strict=False)
 
-    opt.load_state_dict(checkpoint["optimizer"])
-    step = checkpoint.get("step", 0)
+        opt.load_state_dict(checkpoint["optimizer"])
+        step = checkpoint.get("step", 0)
 
-    opt_step = step // cfg.grad_accum_steps
+        pt_step = step // cfg.grad_accum_steps
 
-    print(f"Resuming from step {step}")
+        print(f"Resuming from step {step}")
 
 
     scaler = amp.GradScaler(enabled=(cfg.device == "cuda"))
