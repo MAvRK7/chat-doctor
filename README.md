@@ -19,7 +19,7 @@ Total samples: 221318. Total tokens: 51,757,583. Average tokens per sample: 233.
 
 ## 📦 Dataset 
 
-A custom dataset has been created for this model. It consists of:
+A custom dataset has been created for pre-training this model. It consists of:
 
 * MedDialogue: 542 conversations (0.20%)
 * Medical Conversation Corpus (100k) (MCC): 106378 (39.69%)
@@ -222,3 +222,7 @@ Val:
 val/loss, val and val/perplexity
 
 The text generated during trining stages will also be visible in the Text section.
+---
+Details after Phase I pre-training
+* Logits shape: torch.Size([2, 64, 8000])
+* MoE loss: 0.4164277911186218

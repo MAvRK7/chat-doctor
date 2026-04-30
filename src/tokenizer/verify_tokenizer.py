@@ -16,6 +16,11 @@ def verify_tokenizer(model_path="src/tokenizer/tokenizer.json.model"):
     print("Encoded IDs:", enc)
     print("Decoded text:", sp.decode(enc))  # Decoding back to text
 
+    print("\nManual encode checks:")
+    print("<assistant>:", sp.encode("<assistant>", out_type=int))
+    print("<user>:", sp.encode("<user>", out_type=int))
+    print("<eos>:", sp.encode("<eos>", out_type=int))
+
     # Check special tokens
     print("\nSpecial tokens:")
     for token in ["<pad>", "<bos>", "<eos>", "<unk>"]:

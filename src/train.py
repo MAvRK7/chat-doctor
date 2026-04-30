@@ -31,10 +31,10 @@ class TrainConfig:
     grad_accum_steps = 4
     batch_size = 8
     max_length = 512
-    lr = 3e-4
+    lr = 1e-4
     weight_decay = 0.1
     warmup_steps = 200
-    max_steps = 30000
+    max_steps = 10000
 
     log_every = 50
     eval_every = 1000
@@ -60,7 +60,7 @@ def cosine_lr(step, max_steps, base_lr, warmup_steps):
 # -----------------------------
 def evaluate(model, dl, device, vocab_size):
     model.eval()
-    ce_loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+    ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
     total_loss = 0
     count = 0
@@ -93,6 +93,8 @@ def evaluate(model, dl, device, vocab_size):
 # -----------------------------
 def generate_text(model, tok, prompt, device, max_new_tokens=80):
     model.eval()
+    assistant_id = tok.token_to_id("<assistant>")
+    eos_id = tok.token_to_id("<eos>")
 
     with torch.no_grad(), amp.autocast(device_type="cuda", enabled=(device == "cuda")):
         ids = tok.encode(prompt).ids
@@ -112,6 +114,13 @@ def generate_text(model, tok, prompt, device, max_new_tokens=80):
             # sample correctly
             sample_idx = torch.multinomial(probs, 1)   # (1,1)
             next_token = ix.gather(1, sample_idx)      # (1,1)
+
+            if next_token.item() == tok.token_to_id("<user>"):
+                continue
+
+            # stop if EOS
+            if next_token.item() == eos_id:
+                break
 
             # append
             input_ids = torch.cat([input_ids, next_token], dim=1)
@@ -166,18 +175,33 @@ def train():
     ).to(cfg.device)
 
     opt = AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    step = 0
+    opt_step = 0
+
+    # Resume if checkpoint exists
+    if os.path.exists(cfg.save_path):
+        checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
+
+        model.load_state_dict(checkpoint["model"])
+        opt.load_state_dict(checkpoint["optimizer"])
+
+        step = checkpoint.get("step", 0)
+
+        # optional but recommended: sync optimizer step count
+        opt_step = step // cfg.grad_accum_steps
+
+        print(f"Resuming from step {step}")
+
+
     scaler = amp.GradScaler(enabled=(cfg.device == "cuda"))
 
-    ce_loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+    ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
-    step = 0
     opt.zero_grad()
 
     best_val = float("inf")
     no_improve = 0
     best_checkpoint = None
-
-    opt_step = 0
 
     model.train()
 
@@ -247,7 +271,7 @@ def train():
                 sample = generate_text(
                     model,
                     tok,
-                    "Patient: I have a headache.\nDoctor:",
+                    "<user> I have a headache. <assistant>",
                     cfg.device,
                 )
 
