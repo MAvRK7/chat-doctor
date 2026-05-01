@@ -34,8 +34,8 @@ class TrainConfig:
     lr = 1e-4
     weight_decay = 0.1
 
-    warmup_steps = 200
-    max_steps = 50000
+    warmup_steps = 300
+    max_steps = 30000
 
     eval_every = 1000
     log_every = 100
@@ -188,71 +188,67 @@ def train():
             batch = batch.to(cfg.device)
             labels = labels.to(cfg.device)
 
+            # Forward + loss calculation with autocast
             with amp.autocast(device_type="cuda", enabled=(cfg.device == "cuda")):
                 logits, aux = model(batch)
-
-
+            
                 logits_flat = logits[:, :-1].reshape(-1, vocab_size)
-                labels_flat = labels[:, 1:].reshape(-1)                  
-
+                labels_flat = labels[:, 1:].reshape(-1)
+            
                 ce_loss = loss_fn(logits_flat, labels_flat)
-                # --- MORE DEBUG ---
-                if step % 200 == 0:
-                    with torch.no_grad():
-                        preds = torch.argmax(logits_flat, dim=-1)
 
-                    mask = labels_flat != -100
-                    correct = (preds[mask] == labels_flat[mask]).float().mean()
-
-                    print(f"[DEBUG] token_acc={correct.item():.4f}")
-                    writer.add_scalar("train/token_acc", correct.item(), step)
-                moe_loss = aux["moe_loss"]
-
-                # ---- MoE HEALTH ----
-                if "gate_scores" in aux and len(aux["gate_scores"]) > 0:
-                    gs = aux["gate_scores"][0]   # (b, s, experts)
-
-                    expert_usage = gs.mean(dim=(0, 1))  # (E,)
-                    entropy = -(expert_usage * torch.log(expert_usage + 1e-9)).sum()
-
-                    writer.add_scalar("moe/entropy", entropy.item(), step)
-                    writer.add_scalar("moe/expert_0", expert_usage[0].item(), step)
-                    writer.add_scalar("moe/expert_1", expert_usage[1].item(), step)
-                    writer.add_scalar("moe/expert_2", expert_usage[2].item(), step)
-                    writer.add_scalar("moe/expert_3", expert_usage[3].item(), step)
-
+                # Safe MoE auxiliary loss handling
+                if isinstance(aux, dict):
+                    moe_loss = aux.get("moe_loss", torch.tensor(0.0, device=cfg.device))
                 else:
                     moe_loss = aux if torch.is_tensor(aux) else torch.tensor(0.0, device=cfg.device)
 
-            loss = ce_loss + 0.01 * moe_loss
+                loss = ce_loss + 0.01 * moe_loss
+
+            # Backward pass - OUTSIDE autocast (this part was already mostly correct)
             scaler.scale(loss).backward()
 
-            # -------------------------
-            # OPT STEP
-            # -------------------------
+            # === DEBUG ===
+            if step % 200 == 0:
+                with torch.no_grad():
+                    preds = torch.argmax(logits_flat, dim=-1)
+                    mask = labels_flat != -100
+                    correct = (preds[mask] == labels_flat[mask]).float().mean()
+                    print(f"[DEBUG] token_acc={correct.item():.4f}")
+                    writer.add_scalar("train/token_acc", correct.item(), step)
 
+            # === MoE HEALTH MONITORING ===
+            if isinstance(aux, dict) and "gate_scores" in aux and len(aux["gate_scores"]) > 0:
+                gs = aux["gate_scores"][0]
+                expert_usage = gs.mean(dim=(0, 1))
+                entropy = -(expert_usage * torch.log(expert_usage + 1e-9)).sum()
+                writer.add_scalar("moe/entropy", entropy.item(), step)
+                for i, usage in enumerate(expert_usage):
+                    writer.add_scalar(f"moe/expert_{i}", usage.item(), step)
+
+            # ====================== OPTIMIZER STEP ======================
             if (step + 1) % cfg.grad_accum_steps == 0:
                 lr = cosine_lr(step, cfg.max_steps, cfg.lr, cfg.warmup_steps)
-
                 for g in opt.param_groups:
                     g["lr"] = lr
 
                 scaler.unscale_(opt)
                 clip_grad_norm_(model.parameters(), 1.0)
-
                 scaler.step(opt)
                 scaler.update()
                 opt.zero_grad()
 
-                writer.add_scalar("train/lr", lr, opt_step)
+                writer.add_scalar("train/lr", lr, step)   # changed from opt_step
 
+            # ====================== LOGGING ======================
             if step % cfg.log_every == 0:
                 current_loss = (ce_loss + 0.01 * moe_loss).detach().item()
                 current_lr = opt.param_groups[0]["lr"]
 
                 writer.add_scalar("train/loss", current_loss, step)
                 writer.add_scalar("train/ce_loss", ce_loss.item(), step)
-                writer.add_scalar("train/moe_loss", moe_loss.detach().item(), step)
+                writer.add_scalar("train/moe_loss", moe_loss.detach().item() if torch.is_tensor(moe_loss) else 0.0, step)
+
                 ppl = math.exp(min(ce_loss.item(), 15))
                 writer.add_scalar("train/ppl", ppl, step)
 
@@ -260,62 +256,43 @@ def train():
                     f"[STEP {step}] "
                     f"loss={current_loss:.4f} | "
                     f"ce={ce_loss.item():.4f} | "
-                    f"moe={moe_loss.item():.4f} | "
+                    f"moe={moe_loss.item() if torch.is_tensor(moe_loss) else 0.0:.4f} | "
                     f"lr={current_lr:.2e} | "
                     f"ppl={ppl:.2f}"
                 )
 
+            # ====================== EVALUATION & EARLY STOPPING ======================
             if step % cfg.eval_every == 0 and step > 0:
                 val_loss = evaluate(model, val_dl, cfg.device, vocab_size)
                 print(f"[VAL] {step} loss={val_loss:.4f}")
-
-                sample = generate(
-                    model, sp,
-                    "<user> I have a headache. What can I do? <assistant>",
-                    cfg.device
-                )
-            if step % cfg.eval_every == 0 and step > 0:
-                val_loss = evaluate(model, val_dl, cfg.device, vocab_size)
-                print(f"[VAL] {step} loss={val_loss:.4f}")
-
                 writer.add_scalar("val/loss", val_loss, step)
 
-                # -------- EARLY STOPPING --------
+                # Early stopping
                 if val_loss < best_val_loss - cfg.early_stopping_min_delta:
                     best_val_loss = val_loss
                     no_improve_steps = 0
-
                     print("[INFO] New best model — saving")
-
                     torch.save({
                         "model": model.state_dict(),
                         "optimizer": opt.state_dict(),
                         "step": step
                     }, cfg.save_path)
-
                 else:
                     no_improve_steps += 1
                     print(f"[INFO] No improvement ({no_improve_steps}/{cfg.early_stopping_patience})")
-
                     if no_improve_steps >= cfg.early_stopping_patience:
                         print("Early stopping triggered.")
                         return
 
-                # -------- GENERATION --------
+                # Generation sample
                 sample = generate(
                     model, sp,
                     "<user> I have a headache. What can I do? <assistant>",
                     cfg.device
                 )
-
                 print("[GEN]", sample)
 
-                torch.save({
-                    "model": model.state_dict(),
-                    "optimizer": opt.state_dict(),
-                    "step": step
-                }, cfg.save_path)
-
+            # Move to next step
             step += 1
             if step >= cfg.max_steps:
                 break
