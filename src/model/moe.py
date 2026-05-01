@@ -42,7 +42,7 @@ class MoELayer(nn.Module):
         load_balance_loss = -(expert_usage * torch.log(expert_usage + 1e-9)).sum()
 
         # Prepare output buffer
-        out = torch.zeros_like(x)
+        out = torch.zeros_like(x, dtype=x.dtype)
 
         # Process each expert
         for e in range(self.num_experts):
@@ -60,7 +60,8 @@ class MoELayer(nn.Module):
             expert_out = self.experts[e](tokens)
 
             # Gate weights for these tokens
-            weights = topk_scores[mask].unsqueeze(-1)  # (num_tokens, 1)
+            # weights = topk_scores[mask].unsqueeze(-1)  # (num_tokens, 1)
+            weights = topk_scores.masked_select(mask).view(-1, 1)
 
             # Weighted expert output
             expert_out = expert_out * weights
@@ -68,4 +69,4 @@ class MoELayer(nn.Module):
             # Scatter back
             out[flat_mask] += expert_out
 
-        return out, load_balance_loss
+        return out, load_balance_loss, gate_scores

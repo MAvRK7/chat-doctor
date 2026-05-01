@@ -7,136 +7,115 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.nn.utils import clip_grad_norm_
 from torch import amp
+import sentencepiece as spm
 
-from tokenizers import Tokenizer
 from torch.utils.tensorboard import SummaryWriter
 
 from src.dataset.dataset import ConversationDataset, collate_batch
 from src.model.transformer import MoETransformer
 
-
 # -----------------------------
-# Config
+# CONFIG
 # -----------------------------
 class TrainConfig:
-    repo_root = os.getcwd()  # IMPORTANT for Kaggle
+    repo_root = os.getcwd()
 
-    train_path = os.path.join(repo_root, "data/processed/train.jsonl")
-    val_path = os.path.join(repo_root, "data/processed/val.jsonl")
-    tokenizer_path = os.path.join(repo_root, "tokenizer.json")
+    train_path = os.path.join(repo_root, "data/processed/train_formatted.jsonl")
+    val_path = os.path.join(repo_root, "data/processed/val_formatted.jsonl")
+    tokenizer_path = os.path.join(repo_root, "tokenizer/tokenizer.json.model")
     save_path = os.path.join(repo_root, "checkpoints/model.pt")
 
-    log_dir = os.path.join(repo_root, "outputs", "runs")
+    log_dir = os.path.join(repo_root, "outputs/runs")
 
-    grad_accum_steps = 4
     batch_size = 8
+    grad_accum_steps = 4
     max_length = 512
+
     lr = 1e-4
     weight_decay = 0.1
+
     warmup_steps = 200
     max_steps = 50000
 
-    log_every = 50
     eval_every = 1000
+    log_every = 100
 
-    min_delta = 1e-4
-    patience = 5
+    early_stopping_patience = 5
+    early_stopping_min_delta = 0.01
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 # -----------------------------
-# LR Scheduler
+# LR SCHEDULER
 # -----------------------------
 def cosine_lr(step, max_steps, base_lr, warmup_steps):
     if step < warmup_steps:
         return base_lr * step / warmup_steps
-    progress = (step - warmup_steps) / (max_steps - warmup_steps)
-    return base_lr * 0.5 * (1 + math.cos(math.pi * progress))
+    p = (step - warmup_steps) / (max_steps - warmup_steps)
+    return base_lr * 0.5 * (1 + math.cos(math.pi * p))
 
 
 # -----------------------------
-# Eval
+# EVAL
 # -----------------------------
 def evaluate(model, dl, device, vocab_size):
     model.eval()
-    ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
     total_loss = 0
     count = 0
 
     with torch.no_grad(), amp.autocast(device_type="cuda", enabled=(device == "cuda")):
         for batch, labels in dl:
-            attention_mask = (batch != 0)
-
             batch = batch.to(device)
             labels = labels.to(device)
-            attention_mask = attention_mask.to(device)
 
-            logits, _ = model(batch, attention_mask=attention_mask)
+            logits, _ = model(batch)
 
-            logits = logits[:, :-1].contiguous().view(-1, vocab_size)
-            labels = labels[:, 1:].contiguous().view(-1)
+            logits = logits[:, :-1].reshape(-1, vocab_size)
+            labels = labels[:, 1:].reshape(-1)
 
-            loss = ce_loss_fn(logits, labels)
+            loss = loss_fn(logits, labels)
+
             total_loss += loss.item() * labels.numel()
             count += labels.numel()
 
     model.train()
-    avg = total_loss / max(count, 1)
-    ppl = math.exp(min(avg, 20))
-    return avg, ppl
+    return total_loss / max(count, 1)
 
 
 # -----------------------------
-# Generation
+# GENERATION
 # -----------------------------
-def generate_text(model, tok, prompt, device, max_new_tokens=80):
+def generate(model, sp, prompt, device, max_new_tokens=80):
     model.eval()
-    assistant_id = tok.token_to_id("<assistant>")
-    eos_id = tok.token_to_id("<eos>")
 
-    with torch.no_grad(), amp.autocast(device_type="cuda", enabled=(device == "cuda")):
-        ids = tok.encode(prompt).ids
-        input_ids = torch.tensor([ids], device=device)
+    eos_id = sp.eos_id()
 
+    ids = sp.encode(prompt)
+    x = torch.tensor([ids], device=device)
+
+    with torch.no_grad():
         for _ in range(max_new_tokens):
-            logits, _ = model(input_ids)
-
-            # slice last token
+            logits, _ = model(x)
             logits = logits[:, -1, :] / 0.8
 
-            # top-k
-            top_k = 50
-            v, ix = torch.topk(logits, top_k)   # v: (1,k), ix: (1,k)
-            probs = F.softmax(v, dim=-1)
+            probs = F.softmax(logits, dim=-1)
+            next_id = torch.multinomial(probs, 1)
 
-            # sample correctly
-            sample_idx = torch.multinomial(probs, 1)   # (1,1)
-            next_token = ix.gather(1, sample_idx)      # (1,1)
-
-            user_id = tok.token_to_id("<user>")
-            if next_token.item() == user_id:
-                continue
-
-            # stop if EOS
-            if next_token.item() == eos_id:
+            if next_id.item() == eos_id:
                 break
 
-            # append
-            input_ids = torch.cat([input_ids, next_token], dim=1)
-            input_ids = input_ids[:, -model.max_seq_len:]
+            x = torch.cat([x, next_id], dim=1)
 
-    out = tok.decode(input_ids[0].tolist())
-    out = out.replace("Ġ", "").replace("Ċ", "\n")
-    out = out.replace("< user >", "<user>")
-    out = out.replace("< assistant >", "<assistant>")
-    out = " ".join(out.split())   # collapse multiple spaces
+    out = sp.decode(x[0].tolist())
     model.train()
     return out
 
+
 # -----------------------------
-# Train
+# TRAIN
 # -----------------------------
 def train():
     cfg = TrainConfig()
@@ -144,27 +123,19 @@ def train():
     os.makedirs(os.path.dirname(cfg.save_path), exist_ok=True)
     os.makedirs(cfg.log_dir, exist_ok=True)
 
-    writer = SummaryWriter(log_dir=cfg.log_dir)
+    writer = SummaryWriter(cfg.log_dir)
 
-    tok = Tokenizer.from_file(cfg.tokenizer_path)
-    vocab_size = tok.get_vocab_size()
+    # tokenizer (SentencePiece ONLY)
+    sp = spm.SentencePieceProcessor(model_file=cfg.tokenizer_path)
+    vocab_size = sp.get_piece_size()
 
-    train_ds = ConversationDataset(cfg.train_path, tok, cfg.max_length)
-    val_ds = ConversationDataset(cfg.val_path, tok, cfg.max_length)
+    train_ds = ConversationDataset(cfg.train_path, sp, cfg.max_length)
+    val_ds = ConversationDataset(cfg.val_path, sp, cfg.max_length)
 
-    train_dl = DataLoader(
-        train_ds,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        collate_fn=lambda x: collate_batch(x, pad_id=0),
-    )
-
-    val_dl = DataLoader(
-        val_ds,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        collate_fn=lambda x: collate_batch(x, pad_id=0),
-    )
+    train_dl = DataLoader(train_ds, batch_size=cfg.batch_size, shuffle=True,
+                          collate_fn=lambda x: collate_batch(x, pad_id=0))
+    val_dl = DataLoader(val_ds, batch_size=cfg.batch_size, shuffle=False,
+                        collate_fn=lambda x: collate_batch(x, pad_id=0))
 
     model = MoETransformer(
         vocab_size=vocab_size,
@@ -178,94 +149,91 @@ def train():
     ).to(cfg.device)
 
     opt = AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    step = 0
-    opt_step = 0
-
-    # Resume if checkpoint exists
-    if os.path.exists(cfg.save_path):
-        checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
-
-        state_dict = checkpoint["model"]
-
-        old_vocab_size = state_dict["token_emb.weight"].shape[0]
-        new_vocab_size = model.token_emb.weight.shape[0]
-
-        if old_vocab_size != new_vocab_size:
-            print(f"Resizing embeddings: {old_vocab_size} → {new_vocab_size}")
-
-            # --- Resize token embeddings ---
-            old_emb = state_dict["token_emb.weight"]
-            new_emb = model.token_emb.weight.data
-
-            new_emb[:old_vocab_size] = old_emb
-
-            if new_vocab_size > old_vocab_size:
-                nn.init.normal_(new_emb[old_vocab_size:], mean=0.0, std=0.02)
-
-            state_dict["token_emb.weight"] = new_emb
-
-            # --- Resize LM head ---
-            old_head = state_dict["lm_head.weight"]
-            new_head = model.lm_head.weight.data
-
-            new_head[:old_vocab_size] = old_head
-
-            if new_vocab_size > old_vocab_size:
-                nn.init.normal_(new_head[old_vocab_size:], mean=0.0, std=0.02)
-
-            state_dict["lm_head.weight"] = new_head
-
-        model.load_state_dict(state_dict, strict=False)
-
-        try:
-            opt.load_state_dict(checkpoint["optimizer"])
-        except Exception as e:
-            print("⚠️ Optimizer state mismatch — resetting optimizer")
-        step = checkpoint.get("step", 0)
-
-        pt_step = step // cfg.grad_accum_steps
-
-        print(f"Resuming from step {step}")
-
 
     scaler = amp.GradScaler(enabled=(cfg.device == "cuda"))
+    loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
 
-    ce_loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
+    # -----------------------------
+    # RESUME
+    # -----------------------------
+    start_step = 0
 
+    if os.path.exists(cfg.save_path):
+        try:
+            print("Loading checkpoint...")
+            checkpoint = torch.load(cfg.save_path, map_location=cfg.device)
+
+            model.load_state_dict(checkpoint["model"])
+            opt.load_state_dict(checkpoint["optimizer"])
+            start_step = checkpoint.get("step", 0)
+            print(f"Resumed from step {start_step}")
+
+        except Exception as e:
+            print(f"Checkpoint load failed: {e}")
+            print("Starting fresh training.")
+    
+    else:
+        print("Checkpoint not available.")
+
+    step = start_step
+    best_val_loss = float("inf")
+    no_improve_steps = 0
+    opt_step = 0
     opt.zero_grad()
-
-    best_val = float("inf")
-    no_improve = 0
-    best_checkpoint = None
 
     model.train()
 
     while step < cfg.max_steps:
         for batch, labels in train_dl:
-            attention_mask = (batch != 0)
-
             batch = batch.to(cfg.device)
             labels = labels.to(cfg.device)
-            attention_mask = attention_mask.to(cfg.device)
 
             with amp.autocast(device_type="cuda", enabled=(cfg.device == "cuda")):
-                logits, aux = model(batch, attention_mask=attention_mask)
+                logits, aux = model(batch)
 
-                logits_flat = logits[:, :-1].contiguous().view(-1, vocab_size)
-                labels_flat = labels[:, 1:].contiguous().view(-1)
 
-                ce_loss = ce_loss_fn(logits_flat, labels_flat)
+                logits_flat = logits[:, :-1].reshape(-1, vocab_size)
+                labels_flat = labels[:, 1:].reshape(-1)                  
 
-                moe_loss = aux if torch.is_tensor(aux) else aux.get("moe_loss", 0.0)
+                ce_loss = loss_fn(logits_flat, labels_flat)
+                # --- MORE DEBUG ---
+                if step % 200 == 0:
+                    with torch.no_grad():
+                        preds = torch.argmax(logits_flat, dim=-1)
 
-                total_loss = (ce_loss + 0.01 * moe_loss) / cfg.grad_accum_steps
+                    mask = labels_flat != -100
+                    correct = (preds[mask] == labels_flat[mask]).float().mean()
 
-            scaler.scale(total_loss).backward()
+                    print(f"[DEBUG] token_acc={correct.item():.4f}")
+                    writer.add_scalar("train/token_acc", correct.item(), step)
+                moe_loss = aux["moe_loss"]
+
+                # ---- MoE HEALTH ----
+                if "gate_scores" in aux and len(aux["gate_scores"]) > 0:
+                    gs = aux["gate_scores"][0]   # (b, s, experts)
+
+                    expert_usage = gs.mean(dim=(0, 1))  # (E,)
+                    entropy = -(expert_usage * torch.log(expert_usage + 1e-9)).sum()
+
+                    writer.add_scalar("moe/entropy", entropy.item(), step)
+                    writer.add_scalar("moe/expert_0", expert_usage[0].item(), step)
+                    writer.add_scalar("moe/expert_1", expert_usage[1].item(), step)
+                    writer.add_scalar("moe/expert_2", expert_usage[2].item(), step)
+                    writer.add_scalar("moe/expert_3", expert_usage[3].item(), step)
+
+                else:
+                    moe_loss = aux if torch.is_tensor(aux) else torch.tensor(0.0, device=cfg.device)
+
+            loss = ce_loss + 0.01 * moe_loss
+            scaler.scale(loss).backward()
+
+            # -------------------------
+            # OPT STEP
+            # -------------------------
 
             if (step + 1) % cfg.grad_accum_steps == 0:
-                opt_step += 1
+                lr = cosine_lr(step, cfg.max_steps, cfg.lr, cfg.warmup_steps)
 
-                lr = cosine_lr(opt_step, cfg.max_steps, cfg.lr, cfg.warmup_steps)
                 for g in opt.param_groups:
                     g["lr"] = lr
 
@@ -280,78 +248,79 @@ def train():
 
             if step % cfg.log_every == 0:
                 current_loss = (ce_loss + 0.01 * moe_loss).detach().item()
+                current_lr = opt.param_groups[0]["lr"]
 
                 writer.add_scalar("train/loss", current_loss, step)
                 writer.add_scalar("train/ce_loss", ce_loss.item(), step)
                 writer.add_scalar("train/moe_loss", moe_loss.detach().item(), step)
+                ppl = math.exp(min(ce_loss.item(), 15))
+                writer.add_scalar("train/ppl", ppl, step)
 
                 print(
-                    f"Step {step} | "
-                    f"Loss: {current_loss:.4f} | "
-                    f"CE: {ce_loss.item():.4f} | "
-                    f"MoE: {moe_loss.detach().item():.4f}"
+                    f"[STEP {step}] "
+                    f"loss={current_loss:.4f} | "
+                    f"ce={ce_loss.item():.4f} | "
+                    f"moe={moe_loss.item():.4f} | "
+                    f"lr={current_lr:.2e} | "
+                    f"ppl={ppl:.2f}"
                 )
 
-            # -----------------------------
-            # Evaluation
-            # -----------------------------
             if step % cfg.eval_every == 0 and step > 0:
-                val_loss, val_ppl = evaluate(model, val_dl, cfg.device, vocab_size)
+                val_loss = evaluate(model, val_dl, cfg.device, vocab_size)
+                print(f"[VAL] {step} loss={val_loss:.4f}")
+
+                sample = generate(
+                    model, sp,
+                    "<user> I have a headache. What can I do? <assistant>",
+                    cfg.device
+                )
+            if step % cfg.eval_every == 0 and step > 0:
+                val_loss = evaluate(model, val_dl, cfg.device, vocab_size)
+                print(f"[VAL] {step} loss={val_loss:.4f}")
 
                 writer.add_scalar("val/loss", val_loss, step)
-                writer.add_scalar("val/perplexity", val_ppl, step)
 
-                print(f"[VAL] {step} | loss={val_loss:.4f} | ppl={val_ppl:.2f}")
+                # -------- EARLY STOPPING --------
+                if val_loss < best_val_loss - cfg.early_stopping_min_delta:
+                    best_val_loss = val_loss
+                    no_improve_steps = 0
 
-                sample = generate_text(
-                    model,
-                    tok,
-                    "<user> I have a headache. What should I do? <assistant>",
-                    cfg.device,
-                )
+                    print("[INFO] New best model — saving")
 
-                writer.add_text("samples/output", sample, step)
-                print("[GEN]", sample)
-
-                # ---- EARLY STOPPING ----
-                if val_loss < best_val - cfg.min_delta:
-                    best_val = val_loss
-                    no_improve = 0
-
-                    best_checkpoint = {
+                    torch.save({
                         "model": model.state_dict(),
                         "optimizer": opt.state_dict(),
-                        "step": step,
-                    }
+                        "step": step
+                    }, cfg.save_path)
 
-                    torch.save(best_checkpoint, cfg.save_path)
-                    print("[BEST SAVED]")
                 else:
-                    no_improve += 1
-                    print(f"No improve: {no_improve}/{cfg.patience}")
+                    no_improve_steps += 1
+                    print(f"[INFO] No improvement ({no_improve_steps}/{cfg.early_stopping_patience})")
 
-                    if no_improve >= cfg.patience:
-                        print("Early stopping. Restoring best model...")
-                        if best_checkpoint is not None:
-                            model.load_state_dict(best_checkpoint["model"])
-                        writer.close()
+                    if no_improve_steps >= cfg.early_stopping_patience:
+                        print("Early stopping triggered.")
                         return
+
+                # -------- GENERATION --------
+                sample = generate(
+                    model, sp,
+                    "<user> I have a headache. What can I do? <assistant>",
+                    cfg.device
+                )
+
+                print("[GEN]", sample)
+
+                torch.save({
+                    "model": model.state_dict(),
+                    "optimizer": opt.state_dict(),
+                    "step": step
+                }, cfg.save_path)
 
             step += 1
             if step >= cfg.max_steps:
                 break
 
-    torch.save(
-        {
-            "model": model.state_dict(),
-            "optimizer": opt.state_dict(),
-            "step": step,
-        },
-        cfg.save_path,
-    )
-
-    writer.close()
-    print("Training complete.")
+    print("Training complete")
 
 
 if __name__ == "__main__":

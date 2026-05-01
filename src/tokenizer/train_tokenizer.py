@@ -4,12 +4,17 @@ import argparse
 import random
 import re
 import os
-from tqdm import tqdm  # Importing tqdm for progress bar
+from tqdm import tqdm
 
-def normalize_medical_text(text: str) -> str:
+
+# -----------------------------
+# OPTIONAL NORMALIZATION
+# -----------------------------
+def normalize_text(text: str) -> str:
     text = text.strip()
 
-    # separate units (500mg → 500 mg)
+    text = re.sub(r'\s+', ' ', text)  # collapse spaces
+
     text = re.sub(
         r'(\d+)(mg|ml|kg|g|mcg|mmhg|bpm|cm|mm)',
         r'\1 \2',
@@ -17,127 +22,118 @@ def normalize_medical_text(text: str) -> str:
         flags=re.IGNORECASE
     )
 
-    # normalize vitals (120/80 → 120 / 80)
     text = re.sub(r'(\d+)/(\d+)', r'\1 / \2', text)
 
     return text
 
 
-def load_jsonl_conversations(path):
-    conversations = []
+# -----------------------------
+# LOAD JSONL (IMPORTANT FIX)
+# -----------------------------
+def load_jsonl(path, sample_size=None):
+    texts = []
 
     with open(path, "r", encoding="utf-8") as f:
-        for line in f:
+        for i, line in enumerate(tqdm(f, desc=f"Loading {path}")):
             obj = json.loads(line)
 
-            convo = []
-            for msg in obj.get("messages", []):
-                role = msg.get("role", "").strip()
-                content = msg.get("content", "").strip()
+            text = obj.get("text", "")
+            if not text:
+                continue
 
-                if not content:
-                    continue
+            text = normalize_text(text)
 
-                content = normalize_medical_text(content)
-                convo.append(f"<{role}> {content}")
+            if len(text) < 20:
+                continue
 
-            if convo:
-                conversations.append(" ".join(convo))
+            texts.append(text)
 
-    return conversations
+            if sample_size and len(texts) >= sample_size:
+                break
+
+    return texts
 
 
-def write_corpus(texts, output_path):
-    with open(output_path, "w", encoding="utf-8") as f:
+# -----------------------------
+# WRITE CORPUS
+# -----------------------------
+def write_corpus(texts, path):
+    with open(path, "w", encoding="utf-8") as f:
         for t in texts:
             f.write(t + "\n")
 
 
+# -----------------------------
+# MAIN
+# -----------------------------
 def main():
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--input", nargs="+", required=True)
-    parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--output", type=str, default="tokenizer")
+
     parser.add_argument("--vocab_size", type=int, default=32000)
     parser.add_argument("--sample_size", type=int, default=None)
+
     args = parser.parse_args()
 
     all_texts = []
 
-    print("📥 Loading input files...")
+    print("\n📥 Loading datasets...")
     for path in args.input:
-        if path.endswith(".jsonl"):
-            texts = load_jsonl_conversations(path)
-            print(f"Loaded {len(texts)} conversations from {path}")
-            all_texts.extend(texts)
+        texts = load_jsonl(path, args.sample_size)
+        print(f"Loaded {len(texts)} from {path}")
+        all_texts.extend(texts)
 
-    print(f"Total before dedup: {len(all_texts)}")
+    print(f"\nTotal before dedup: {len(all_texts)}")
 
-    # deduplicate
     all_texts = list(set(all_texts))
+    random.shuffle(all_texts)
+
     print(f"After dedup: {len(all_texts)}")
 
-    # prioritize longer (richer medical content)
-    all_texts.sort(key=len, reverse=True)
+    os.makedirs("tokenizer", exist_ok=True)
 
-    # mixed sampling
-    if args.sample_size and len(all_texts) > args.sample_size:
-        half = args.sample_size // 2
-        long_part = all_texts[:half]
-        rest = all_texts[half:]
-        random.shuffle(rest)
-        all_texts = long_part + rest[:half]
-        print(f"Subsampled to {len(all_texts)}")
-    else:
-        random.shuffle(all_texts)
+    corpus_path = "tokenizer/corpus.txt"
 
-    # Create output directory for tokenizer if it doesn't exist
-    tokenizer_dir = "src/tokenizer"
-    os.makedirs(tokenizer_dir, exist_ok=True)
-
-    # Write corpus
-    corpus_path = os.path.join(tokenizer_dir, "corpus.txt") 
-    print("💾 Writing corpus to disk...")
+    print("\n💾 Writing corpus...")
     write_corpus(all_texts, corpus_path)
 
-    # Initialize progress bar for the corpus size
-    print("🧠 Training tokenizer with progress bar...")
-    
-    # Progress bar for tokenization process (before training starts)
-    with tqdm(total=len(all_texts), desc="Preparing corpus", unit="sentence") as pbar:
-        pbar.update(len(all_texts))  # Simulating progress for corpus preparation
+    print("\n🧠 Training SentencePiece tokenizer...")
 
-    # Train the SentencePiece tokenizer
     spm.SentencePieceTrainer.Train(
         input=corpus_path,
-        model_prefix=os.path.join(tokenizer_dir, args.output),  # Save the model and vocab to src/tokenizer/
+        model_prefix=f"tokenizer/{args.output}",
         vocab_size=args.vocab_size,
         model_type="bpe",
-        character_coverage=0.9997,
-        input_sentence_size=5000000,
-        shuffle_input_sentence=True,
+
+        character_coverage=0.9995,
         normalization_rule_name="nmt_nfkc",
+
         pad_id=0,
         unk_id=1,
         bos_id=2,
         eos_id=3,
+
         pad_piece="<pad>",
         unk_piece="<unk>",
         bos_piece="<bos>",
         eos_piece="<eos>",
+
         user_defined_symbols=[
             "<user>",
             "<assistant>",
-            "<system>",
-            "<mask>"
-        ]
+        ],
+
+        shuffle_input_sentence=True,
+        input_sentence_size=5000000
     )
 
-    print(f"✅ Saved tokenizer: {os.path.join(tokenizer_dir, args.output)}.model / {os.path.join(tokenizer_dir, args.output)}.vocab")
-
+    print("\n✅ Tokenizer saved to tokenizer/")
 
 
 if __name__ == "__main__":
     main()
 
 # comand line usage
-# python src/tokenizer/train_tokenizer.py --input data/processed/train.jsonl --vocab_size 20000 --output tokenizer.json
+# python src/tokenizer/train_tokenizer.py --input data/processed/train_formatted.jsonl --vocab_size 20000 --output tokenizer.json

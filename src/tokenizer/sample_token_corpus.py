@@ -21,7 +21,7 @@ def sample_corpus(input_path, output_path, sample_size=10000):
 
 if __name__ == "__main__":
     # Adjust paths and sample size as needed
-    sample_corpus("src/tokenizer/tokenizer.json_corpus.txt", "src/tokenizer/tokenizer_sampled.json_corpus.txt", sample_size=10000)
+    sample_corpus("tokenizer/corpus.txt", "tokenizer/sampled_corpus.txt", sample_size=10000)
 
 # run
 # python src/tokenizer/sample_token_corpus.py

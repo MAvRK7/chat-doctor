@@ -1,6 +1,6 @@
 import sentencepiece as spm
 
-def verify_tokenizer(model_path="src/tokenizer/tokenizer.json.model"):
+def verify_tokenizer(model_path="tokenizer/tokenizer.json.model"):
     print("Loading SentencePiece tokenizer...")
     sp = spm.SentencePieceProcessor()
     sp.load(model_path)  # Load the SentencePiece model
@@ -36,6 +36,7 @@ def verify_tokenizer(model_path="src/tokenizer/tokenizer.json.model"):
         "What is the capital of France?",
         "How does the immune system work?",
         "Describe the process of digestion."
+        "<user> Hello <assistant> Hello!"
     ]
     
     print("\nEvaluating tokenization on sample sentences:")
@@ -49,5 +50,5 @@ if __name__ == "__main__":
     verify_tokenizer()
 
 
-# Rin this
+# Run this
 # python src/tokenizer/verify_tokenizer.py

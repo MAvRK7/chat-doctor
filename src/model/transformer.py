@@ -118,14 +118,24 @@ class TransformerBlock(nn.Module):
         x = x + self.dropout(self.attn(h, mask=mask))
 
         h = self.norm2(x)
+
         if self.is_moe:
-            ffn_out, moe_loss = self.ffn(h)
+            ffn_out, moe_loss, gate_scores = self.ffn(h)
             x = x + self.dropout(ffn_out)
-            return x, moe_loss
+
+            return x, {
+                "moe_loss": moe_loss,
+                "gate_scores": gate_scores
+            }
+
         else:
             ffn_out = self.ffn(h)
             x = x + self.dropout(ffn_out)
-            return x, 0.0
+
+            return x, {
+                "moe_loss": torch.tensor(0.0, device=x.device),
+                "gate_scores": None
+            }
 
 
 # ----------------------------
@@ -166,16 +176,27 @@ class MoETransformer(nn.Module):
         self.lm_head = nn.Linear(dim, vocab_size, bias=False)
         self.lm_head.weight = self.token_emb.weight
 
+        self.scale = 1 / math.sqrt(dim)
+
     def forward(self, input_ids, attention_mask=None):
 
         x = self.token_emb(input_ids)
 
-        total_moe_loss = 0.0
+        total_moe_loss = torch.tensor(0.0, device=input_ids.device)
+        gate_stats = []
+
         for block in self.blocks:
-            x, moe_loss = block(x, mask=attention_mask)
-            total_moe_loss += moe_loss
+            x, aux = block(x, mask=attention_mask)
+
+            if aux["moe_loss"] is not None:
+                total_moe_loss = total_moe_loss + aux["moe_loss"]
+            if aux["gate_scores"] is not None:
+                gate_stats.append(aux["gate_scores"].detach().cpu())
 
         x = self.norm_f(x)
-        logits = self.lm_head(x)
+        logits = self.lm_head(x) * self.scale
 
-        return logits, total_moe_loss
+        return logits, {
+            "moe_loss": total_moe_loss,
+            "gate_scores": gate_stats
+        }
