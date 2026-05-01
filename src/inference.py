@@ -1,17 +1,22 @@
 import torch
 import re
-from tokenizers import Tokenizer
+import sentencepiece as spm
 from src.model.transformer import MoETransformer
 from src.sampling import sample, apply_repetition_penalty
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Load tokenizer
-tokenizer = Tokenizer.from_file("tokenizer.json")
+# -----------------------------
+# LOAD TOKENIZER
+# -----------------------------
+sp = spm.SentencePieceProcessor()
+sp.load("tokenizer/tokenizer.json.model")
 
-# Load model
+# -----------------------------
+# LOAD MODEL
+# -----------------------------
 model = MoETransformer(
-    vocab_size=tokenizer.get_vocab_size(),
+    vocab_size=sp.get_piece_size(),
     dim=512,
     num_layers=8,
     num_heads=8,
@@ -26,25 +31,31 @@ model.load_state_dict(state["model"])
 model.to(device)
 model.eval()
 
-def generate(prompt, max_new_tokens=150, temperature=0.7, top_k=40, top_p=0.9):
-    eos_id = tokenizer.token_to_id("<eos>")
 
-    enc = tokenizer.encode(prompt)
-    ids = torch.tensor([enc.ids], dtype=torch.long).to(device)
+# -----------------------------
+# GENERATION
+# -----------------------------
+def generate(user_input, max_new_tokens=150, temperature=0.7, top_k=40, top_p=0.9):
+    eos_id = sp.eos_id()
+
+    # ✅ FORCE correct format (match your dataset)
+    prompt = f"<user> {user_input}\n<assistant> "
+
+    # ✅ Add BOS
+    ids_list = [sp.bos_id()] + sp.encode(prompt)
+    ids = torch.tensor([ids_list], dtype=torch.long).to(device)
 
     for _ in range(max_new_tokens):
         with torch.no_grad():
             logits, _ = model(ids)
             logits = logits[:, -1, :]
 
-            # repetition penalty
             logits = apply_repetition_penalty(
                 logits,
                 ids[0].tolist(),
                 penalty=1.15
             )
 
-            # sampling
             next_id = sample(
                 logits,
                 temperature=temperature,
@@ -52,35 +63,57 @@ def generate(prompt, max_new_tokens=150, temperature=0.7, top_k=40, top_p=0.9):
                 top_p=top_p
             )
 
-        # stop if EOS
+        # stop on EOS
         if eos_id is not None and next_id.item() == eos_id:
             break
 
         ids = torch.cat([ids, next_id], dim=1)
 
-    # decode
-    text = tokenizer.decode(ids[0].tolist())
+        # anti-loop
+        if len(ids[0]) > 20:
+            recent = ids[0][-10:].tolist()
+            if len(set(recent)) < 3:
+                break
 
-    # clean byte-level artifacts
-    text = text.replace("Ġ", " ").replace("Ċ", "\n")
+    # -----------------------------
+    # DECODE
+    # -----------------------------
+    text = sp.decode(ids[0].tolist())
 
-    # collapse only *double* spaces, not all whitespace
-    text = re.sub(r" {2,}", " ", text)
+    # -----------------------------
+    # CLEAN OUTPUT
+    # -----------------------------
 
-    # remove leftover placeholders
-    text = text.replace("Person", "").strip()
+    # remove prompt
+    if text.startswith(prompt):
+        text = text[len(prompt):]
 
-    # stop at first "Assistant:" or repeated role
-    text = re.split(r"(Assistant:|Doctor: Patient:)", text)[0].strip()
+    # remove accidental role leakage
+    text = re.sub(r"(Patient:|Doctor:)", "", text)
+
+    # remove extra assistant tags if repeated
+    if "<assistant>" in text:
+        text = text.split("<assistant>", 1)[-1]
+
+    # clean spacing
+    text = re.sub(r"\s+", " ", text).strip()
+
+    # remove trailing junk
+    text = re.sub(r'["]+$', "", text).strip()
 
     return text
 
+
+# -----------------------------
+# MAIN
+# -----------------------------
 if __name__ == "__main__":
-    prompt = (
-        "Patient: I have a headache."
-        "Doctor:"
-    )
-    print(generate(prompt))
+    user_input = "My eyes hurt so much, can you suggest what i must do?"  # Example input
+
+    response = generate(user_input)
+
+    print(f"User: {user_input}")
+    print(f"Assistant: {response}")
 
 # Run 
 # python -m src.inference
